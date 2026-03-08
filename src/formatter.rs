@@ -320,6 +320,26 @@ fn format_statement(stmt: &Statement, indent: usize, ctx: &mut FormatContext) ->
             let val_str = format_expression(value, indent, ctx);
             format!("{}{} = {};", ind, name, val_str)
         }
+        Statement::FieldAssign {
+            object,
+            field,
+            value,
+            ..
+        } => {
+            let val_str = format_expression(value, indent, ctx);
+            format!("{}{}.{} = {};", ind, object, field, val_str)
+        }
+        Statement::IndexAssign {
+            object,
+            index,
+            value,
+            ..
+        } => {
+            let obj_str = format_expression(object, indent, ctx);
+            let idx_str = format_expression(index, indent, ctx);
+            let val_str = format_expression(value, indent, ctx);
+            format!("{}{}[{}] = {};", ind, obj_str, idx_str, val_str)
+        }
         Statement::If {
             condition,
             consequence,
@@ -351,14 +371,22 @@ fn format_statement(stmt: &Statement, indent: usize, ctx: &mut FormatContext) ->
             result.push_str(&format!("{}}}", ind));
             result
         }
+        Statement::Break => format!("{}yut;", ind),
+        Statement::Continue => format!("{}shar;", ind),
         Statement::ForIn {
+            index,
             iterator,
             collection,
             body,
             ..
         } => {
             let collection_str = format_expression(collection, indent, ctx);
-            let mut result = format!("{}pat {} htae {} {{\n", ind, iterator, collection_str);
+            let header = if let Some(idx) = index {
+                format!("{}pat ({}, {}) htae {} {{\n", ind, idx, iterator, collection_str)
+            } else {
+                format!("{}pat {} htae {} {{\n", ind, iterator, collection_str)
+            };
+            let mut result = header;
             result.push_str(&format_block(body, indent + 1, ctx));
             result.push_str(&format!("{}}}", ind));
             result
@@ -391,7 +419,7 @@ fn format_statement(stmt: &Statement, indent: usize, ctx: &mut FormatContext) ->
             format!("{}pya({});", ind, val_str)
         }
         Statement::Import { module, .. } => {
-            format!("{}yu {};", ind, module)
+            format!("{}yu \"{}\";", ind, module.trim_matches('"'))
         }
         Statement::ExpressionStatement(expr) => {
             let expr_str = format_expression(expr, indent, ctx);
@@ -583,6 +611,21 @@ fn format_expression(expr: &Expression, indent: usize, ctx: &mut FormatContext) 
             }).collect();
             format!("{} {{ {} }}", name, fs.join(", "))
         }
+        Expression::ClosureLiteral {
+            parameters,
+            return_type,
+            body,
+        } => {
+            let params = format_function_params(parameters, indent);
+            let mut result = format!("loke{}", params);
+            if *return_type != Type::Nil {
+                result.push_str(&format!(" -> {}", format_type(return_type)));
+            }
+            result.push_str(" {\n");
+            result.push_str(&format_block(body, indent + 1, ctx));
+            result.push_str(&format!("{}}}", indent_str(indent)));
+            result
+        }
         Expression::ErrorCreate { message } => {
             let msg = format_expression(message, indent, ctx);
             format!("amhar({})", msg)
@@ -609,6 +652,13 @@ fn format_type(ty: &Type) -> String {
         Type::Tuple(types) => {
             let ts: Vec<String> = types.iter().map(|t| format_type(t)).collect();
             format!("({})", ts.join(", "))
+        }
+        Type::Function {
+            params,
+            return_type,
+        } => {
+            let pstr: Vec<String> = params.iter().map(format_type).collect();
+            format!("loke({}) -> {}", pstr.join(", "), format_type(return_type))
         }
     }
 }
@@ -720,5 +770,15 @@ pyan ၀;
         let result = format_source(input).unwrap();
         assert!(result.ends_with('\n'));
         assert!(!result.ends_with("\n\n"));
+    }
+
+    #[test]
+    fn test_format_imports_to_quoted_style() {
+        let input = r#"yu json;
+yu "file";
+"#;
+        let result = format_source(input).unwrap();
+        assert!(result.contains("yu \"json\";"));
+        assert!(result.contains("yu \"file\";"));
     }
 }

@@ -315,10 +315,20 @@ sar name = phat("Enter your name: ");
 Use `yu` to import a module:
 
 ```
-yu my_module;
+yu "json";
+yu json;
 ```
 
-This generates an import comment in Go output, or `#include "my_module.c"` in C output. A full module system is planned for future versions.
+Both quoted and legacy forms are accepted. The formatter canonicalizes imports to the quoted style.
+
+Built-in stdlib modules (Go backend):
+
+- `"kainn/http"` (alias `http`)
+- `"json"`
+- `"file"`
+- `"su_nit"`
+
+For these stdlib modules, use the Go backend (`--target go`). The C backend rejects them with a clear error.
 
 ### Comments
 

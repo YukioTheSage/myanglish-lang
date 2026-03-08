@@ -72,6 +72,8 @@ impl<'a> Parser<'a> {
             TokenKind::Hlyin => self.parse_if_statement(),
             TokenKind::Pyan => self.parse_return_statement(),
             TokenKind::Pat => self.parse_pat_statement(),
+            TokenKind::Break => self.parse_break_statement(),
+            TokenKind::Continue => self.parse_continue_statement(),
             TokenKind::Phat => {
                 // Read statement might be an expression, but if it stands alone we process as expression statement
                 self.parse_expression_statement()
@@ -94,13 +96,11 @@ impl<'a> Parser<'a> {
                 // Check for destructured let: `Type name, Type name = expr;`
                 // or assignment: `name = expr;`
                 // or struct type let: `StructName name = expr;`
-                if self.peek_token.kind == TokenKind::Assign {
-                    self.parse_assign_statement()
-                } else if self.peek_is_identifier() {
+                if self.peek_is_identifier() {
                     // Could be `StructName varName = expr;` (struct type let)
                     self.parse_let_or_destructured()
                 } else {
-                    self.parse_expression_statement()
+                    self.parse_reassignment_or_expression_statement()
                 }
             },
             _ => self.parse_expression_statement(),
@@ -121,9 +121,63 @@ impl<'a> Parser<'a> {
             TokenKind::Su => self.parse_array_type(),
             TokenKind::Twe => self.parse_map_type(),
             TokenKind::LParen => self.parse_tuple_type(),
-            TokenKind::Identifier(name) => Some(Type::Struct(name.clone())),
+            TokenKind::Loke => self.parse_function_type(),
+            TokenKind::Identifier(name) => self
+                .parse_qualified_type_name(name.clone())
+                .map(Type::Struct),
             _ => None,
         }
+    }
+
+    fn parse_qualified_type_name(&mut self, first: String) -> Option<String> {
+        let mut full_name = first;
+        while self.peek_token.kind == TokenKind::Dot {
+            self.next_token(); // consume '.'
+            if !self.expect_peek_identifier() {
+                return None;
+            }
+            let segment = match &self.current_token.kind {
+                TokenKind::Identifier(name) => name.clone(),
+                _ => return None,
+            };
+            full_name.push('.');
+            full_name.push_str(&segment);
+        }
+        Some(full_name)
+    }
+
+    fn parse_function_type(&mut self) -> Option<Type> {
+        // Syntax: loke(type1, type2, ...) -> return_type
+        if !self.expect_peek(TokenKind::LParen) {
+            return None;
+        }
+
+        let mut params = Vec::new();
+        if self.peek_token.kind == TokenKind::RParen {
+            self.next_token();
+        } else {
+            self.next_token();
+            params.push(self.parse_type()?);
+            while self.peek_token.kind == TokenKind::Comma {
+                self.next_token(); // consume ','
+                self.next_token(); // move to next type
+                params.push(self.parse_type()?);
+            }
+            if !self.expect_peek(TokenKind::RParen) {
+                return None;
+            }
+        }
+
+        if !self.expect_peek(TokenKind::Arrow) {
+            return None;
+        }
+        self.next_token();
+        let return_type = self.parse_type()?;
+
+        Some(Type::Function {
+            params,
+            return_type: Box::new(return_type),
+        })
     }
 
     fn parse_tuple_type(&mut self) -> Option<Type> {
@@ -166,13 +220,14 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_import_statement(&mut self) -> Option<Statement> {
-        if !self.expect_peek_identifier() {
-            return None;
-        }
+        self.next_token();
 
-        let name_span = Span { line: self.current_token.line, column: self.current_token.column };
+        let name_span = Span {
+            line: self.current_token.line,
+            column: self.current_token.column,
+        };
         let module = match &self.current_token.kind {
-            TokenKind::Identifier(n) => n.clone(),
+            TokenKind::Identifier(n) | TokenKind::StringLiteral(n) => n.clone(),
             _ => return None,
         };
 
@@ -240,23 +295,134 @@ impl<'a> Parser<'a> {
         Some(Statement::Let { name: name1, value, ty: ty1, name_span: name_span1 })
     }
 
-    fn parse_assign_statement(&mut self) -> Option<Statement> {
-        let name_span = Span { line: self.current_token.line, column: self.current_token.column };
-        let name = match &self.current_token.kind {
-            TokenKind::Identifier(n) => n.clone(),
-            _ => return None,
+    fn parse_reassignment_or_expression_statement(&mut self) -> Option<Statement> {
+        let name_span = Span {
+            line: self.current_token.line,
+            column: self.current_token.column,
         };
+        let left = self.parse_expression(Precedence::Lowest)?;
 
-        self.next_token(); // move to =
-        self.next_token(); // move past =
+        if self.peek_token.kind == TokenKind::Assign {
+            self.next_token(); // move to '='
+            self.next_token(); // move to assigned value
+            let value = self.parse_expression(Precedence::Lowest)?;
+            if self.peek_token.kind == TokenKind::Semicolon {
+                self.next_token();
+            }
 
-        let value = self.parse_expression(Precedence::Lowest)?;
+            return match left {
+                Expression::Identifier(name) => Some(Statement::Assign {
+                    name,
+                    value,
+                    name_span,
+                }),
+                Expression::FieldAccess { object, field } => match *object {
+                    Expression::Identifier(object_name) => Some(Statement::FieldAssign {
+                        object: object_name,
+                        field,
+                        value,
+                        name_span,
+                    }),
+                    _ => {
+                        self.errors.push(ParseError {
+                            message: "Invalid field assignment target".to_string(),
+                            line: name_span.line,
+                            column: name_span.column,
+                        });
+                        None
+                    }
+                },
+                Expression::IndexExpression { left, index } => Some(Statement::IndexAssign {
+                    object: *left,
+                    index: *index,
+                    value,
+                    name_span,
+                }),
+                _ => {
+                    self.errors.push(ParseError {
+                        message: "Invalid assignment target".to_string(),
+                        line: name_span.line,
+                        column: name_span.column,
+                    });
+                    None
+                }
+            };
+        }
+
+        // Qualified type declaration in expression position:
+        // `module.Type name = expr;`
+        // `module.Type a, amhar b = expr;`
+        if let Expression::FieldAccess { object, field } = left.clone() {
+            if let Expression::Identifier(type_ns) = *object {
+                if self.peek_is_identifier() {
+                    self.next_token(); // move to declared variable name
+                    let first_name_span = Span {
+                        line: self.current_token.line,
+                        column: self.current_token.column,
+                    };
+                    let first_name = match &self.current_token.kind {
+                        TokenKind::Identifier(n) => n.clone(),
+                        _ => return None,
+                    };
+                    let first_ty = Type::Struct(format!("{}.{}", type_ns, field));
+
+                    if self.peek_token.kind == TokenKind::Comma {
+                        self.next_token(); // consume ','
+                        let mut names = vec![(first_name, first_ty, first_name_span)];
+                        loop {
+                            self.next_token(); // move to next type
+                            let ty = self.parse_type()?;
+                            if !self.expect_peek_identifier() {
+                                return None;
+                            }
+                            let span = Span {
+                                line: self.current_token.line,
+                                column: self.current_token.column,
+                            };
+                            let name = match &self.current_token.kind {
+                                TokenKind::Identifier(n) => n.clone(),
+                                _ => return None,
+                            };
+                            names.push((name, ty, span));
+                            if self.peek_token.kind != TokenKind::Comma {
+                                break;
+                            }
+                            self.next_token(); // consume ','
+                        }
+                        if !self.expect_peek(TokenKind::Assign) {
+                            return None;
+                        }
+                        self.next_token();
+                        let value = self.parse_expression(Precedence::Lowest)?;
+                        if self.peek_token.kind == TokenKind::Semicolon {
+                            self.next_token();
+                        }
+                        return Some(Statement::LetDestructured { names, value });
+                    }
+
+                    if !self.expect_peek(TokenKind::Assign) {
+                        return None;
+                    }
+                    self.next_token();
+                    let value = self.parse_expression(Precedence::Lowest)?;
+                    if self.peek_token.kind == TokenKind::Semicolon {
+                        self.next_token();
+                    }
+                    return Some(Statement::Let {
+                        name: first_name,
+                        value,
+                        ty: first_ty,
+                        name_span: first_name_span,
+                    });
+                }
+            }
+        }
 
         if self.peek_token.kind == TokenKind::Semicolon {
             self.next_token();
         }
 
-        Some(Statement::Assign { name, value, name_span })
+        Some(Statement::ExpressionStatement(left))
     }
 
     fn parse_return_statement(&mut self) -> Option<Statement> {
@@ -303,6 +469,20 @@ impl<'a> Parser<'a> {
         }
 
         Some(Statement::Return { value })
+    }
+
+    fn parse_break_statement(&mut self) -> Option<Statement> {
+        if self.peek_token.kind == TokenKind::Semicolon {
+            self.next_token();
+        }
+        Some(Statement::Break)
+    }
+
+    fn parse_continue_statement(&mut self) -> Option<Statement> {
+        if self.peek_token.kind == TokenKind::Semicolon {
+            self.next_token();
+        }
+        Some(Statement::Continue)
     }
 
     fn parse_print_statement(&mut self) -> Option<Statement> {
@@ -368,12 +548,124 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_while_statement(&mut self) -> Option<Statement> {
-        if !self.expect_peek(TokenKind::LParen) {
-            return None;
+    fn parse_pat_statement(&mut self) -> Option<Statement> {
+        if self.peek_token.kind == TokenKind::LParen {
+            return self.parse_paren_pat_statement();
         }
 
-        self.next_token();
+        self.parse_for_in_statement()
+    }
+
+    fn parse_paren_pat_statement(&mut self) -> Option<Statement> {
+        // We already know peek is '('
+        self.next_token(); // consume '('
+        self.next_token(); // move to first token inside parentheses
+
+        // For-in with index/typed variables:
+        // pat (kain i, kain item) htae collection { ... }
+        if self.token_can_start_type(&self.current_token.kind) && self.peek_is_identifier() {
+            let _first_ty = self.parse_type()?;
+            if !self.expect_peek_identifier() {
+                return None;
+            }
+            let first_name = match &self.current_token.kind {
+                TokenKind::Identifier(n) => n.clone(),
+                _ => return None,
+            };
+            let mut name_span = Span {
+                line: self.current_token.line,
+                column: self.current_token.column,
+            };
+
+            let (index, iterator) = if self.peek_token.kind == TokenKind::Comma {
+                self.next_token(); // consume ','
+                self.next_token(); // move to second type
+                let _second_ty = self.parse_type()?;
+                if !self.expect_peek_identifier() {
+                    return None;
+                }
+                let second_name = match &self.current_token.kind {
+                    TokenKind::Identifier(n) => n.clone(),
+                    _ => return None,
+                };
+                name_span = Span {
+                    line: self.current_token.line,
+                    column: self.current_token.column,
+                };
+                (Some(first_name), second_name)
+            } else {
+                (None, first_name)
+            };
+
+            if !self.expect_peek(TokenKind::RParen) {
+                return None;
+            }
+            if !self.expect_peek(TokenKind::Htae) {
+                return None;
+            }
+
+            self.next_token();
+            let collection = self.parse_expression(Precedence::Lowest)?;
+
+            if !self.expect_peek(TokenKind::LBrace) {
+                return None;
+            }
+
+            let body = self.parse_block_statement();
+
+            return Some(Statement::ForIn {
+                index,
+                iterator,
+                collection,
+                body,
+                name_span,
+            });
+        }
+
+        // For-in with untyped index variables:
+        // pat (i, item) htae collection { ... }
+        if let TokenKind::Identifier(first_name) = &self.current_token.kind {
+            if self.peek_token.kind == TokenKind::Comma {
+                let index_name = first_name.clone();
+                let first_span = Span {
+                    line: self.current_token.line,
+                    column: self.current_token.column,
+                };
+                self.next_token(); // consume ','
+                if !self.expect_peek_identifier() {
+                    return None;
+                }
+                let iterator = match &self.current_token.kind {
+                    TokenKind::Identifier(n) => n.clone(),
+                    _ => return None,
+                };
+
+                if !self.expect_peek(TokenKind::RParen) {
+                    return None;
+                }
+                if !self.expect_peek(TokenKind::Htae) {
+                    return None;
+                }
+
+                self.next_token();
+                let collection = self.parse_expression(Precedence::Lowest)?;
+
+                if !self.expect_peek(TokenKind::LBrace) {
+                    return None;
+                }
+
+                let body = self.parse_block_statement();
+                return Some(Statement::ForIn {
+                    index: Some(index_name),
+                    iterator,
+                    collection,
+                    body,
+                    name_span: first_span,
+                });
+            }
+        }
+
+        // Regular while loop form: pat (<condition>) { ... }
         let condition = self.parse_expression(Precedence::Lowest)?;
 
         if !self.expect_peek(TokenKind::RParen) {
@@ -389,12 +681,19 @@ impl<'a> Parser<'a> {
         Some(Statement::While { condition, body })
     }
 
-    fn parse_pat_statement(&mut self) -> Option<Statement> {
-        if self.peek_token.kind == TokenKind::LParen {
-            return self.parse_while_statement();
-        }
-
-        self.parse_for_in_statement()
+    fn token_can_start_type(&self, kind: &TokenKind) -> bool {
+        matches!(
+            kind,
+            TokenKind::Kain
+                | TokenKind::Sar
+                | TokenKind::Sit
+                | TokenKind::DaTha
+                | TokenKind::Amhar
+                | TokenKind::Su
+                | TokenKind::Twe
+                | TokenKind::Identifier(_)
+                | TokenKind::LParen
+        )
     }
 
     fn parse_for_in_statement(&mut self) -> Option<Statement> {
@@ -422,6 +721,7 @@ impl<'a> Parser<'a> {
         let body = self.parse_block_statement();
 
         Some(Statement::ForIn {
+            index: None,
             iterator,
             collection,
             body,
@@ -728,6 +1028,7 @@ impl<'a> Parser<'a> {
             TokenKind::Hmar => Some(Expression::BooleanLiteral(false)),
             TokenKind::Bhala => Some(Expression::NilLiteral),
             TokenKind::Amhar => self.parse_error_create(),
+            TokenKind::Loke => self.parse_closure_literal(),
             // htae and ashay used as built-in function calls
             TokenKind::Htae => {
                 if self.peek_token.kind == TokenKind::LParen {
@@ -878,6 +1179,33 @@ impl<'a> Parser<'a> {
             return None;
         }
         Some(Expression::ErrorCreate { message: Box::new(message) })
+    }
+
+    fn parse_closure_literal(&mut self) -> Option<Expression> {
+        // loke(type name, ...) -> return_type { ... }
+        if !self.expect_peek(TokenKind::LParen) {
+            return None;
+        }
+        let parameters = self.parse_function_parameters()?;
+
+        let return_type = if self.peek_token.kind == TokenKind::Arrow {
+            self.next_token(); // consume '->'
+            self.next_token(); // move to return type
+            self.parse_type()?
+        } else {
+            Type::Nil
+        };
+
+        if !self.expect_peek(TokenKind::LBrace) {
+            return None;
+        }
+        let body = self.parse_block_statement();
+
+        Some(Expression::ClosureLiteral {
+            parameters,
+            return_type,
+            body,
+        })
     }
 
     fn parse_dot_expression(&mut self, left: Expression) -> Option<Expression> {
@@ -1157,7 +1485,6 @@ mod tests {
 
     #[test]
     fn test_spans_are_recorded() {
-        use crate::ast::Span;
         // Line 1: loke main() -> kain {
         // Line 2:     kain age = ၂၀;
         // Line 3: }
@@ -1234,6 +1561,53 @@ mod tests {
     }
 
     #[test]
+    fn test_import_string_and_legacy_syntax() {
+        let input = r#"
+            yu "json";
+            yu json;
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert_eq!(program.statements.len(), 2);
+
+        match &program.statements[0] {
+            Statement::Import { module, .. } => assert_eq!(module, "json"),
+            other => panic!("Expected import statement, got {:?}", other),
+        }
+        match &program.statements[1] {
+            Statement::Import { module, .. } => assert_eq!(module, "json"),
+            other => panic!("Expected import statement, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_qualified_struct_type_in_let() {
+        let input = r#"
+            loke main() -> kain {
+                http.Response res = bhala;
+                pyan 0;
+            }
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+
+        let Statement::FunctionDecl { body, .. } = &program.statements[0] else {
+            panic!("Expected function declaration");
+        };
+        let Statement::Let { ty, .. } = &body.statements[0] else {
+            panic!("Expected let statement");
+        };
+        assert_eq!(ty, &Type::Struct("http.Response".to_string()));
+    }
+
+    #[test]
     fn test_read_input() {
         let input = r#"
             sar name = phat("name?");
@@ -1306,5 +1680,113 @@ mod tests {
         assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
         assert_eq!(program.statements.len(), 2);
         assert!(matches!(program.statements[1], Statement::ForIn { .. }));
+    }
+
+    #[test]
+    fn test_for_in_loop_with_index() {
+        let input = r#"
+            su<kain> numbers = [၁, ၂, ၃];
+            pat (kain i, kain item) htae numbers {
+                pya(i);
+                pya(item);
+            }
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert_eq!(program.statements.len(), 2);
+        match &program.statements[1] {
+            Statement::ForIn {
+                index,
+                iterator,
+                ..
+            } => {
+                assert_eq!(index.as_deref(), Some("i"));
+                assert_eq!(iterator, "item");
+            }
+            other => panic!("Expected ForIn, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_struct_field_assignment() {
+        let input = r#"
+pone Person { sar name; kain age; }
+loke main() -> kain {
+    Person p = Person { name: "Aung", age: 20 };
+    p.name = "Ko Ko";
+    p.age = 25;
+    pya(p.name);
+    pyan 0;
+}
+"#;
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let _program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+    }
+
+    #[test]
+    fn test_array_index_assignment() {
+        let input = r#"
+loke main() -> kain {
+    su<kain> nums = [1, 2, 3];
+    nums[0] = 10;
+    twe<sar, kain> prices = {"tea": 500};
+    prices["coffee"] = 800;
+    pyan 0;
+}
+"#;
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let _program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+    }
+
+    #[test]
+    fn test_break_continue_statements() {
+        let input = r#"
+loke main() -> kain {
+    kain i = 0;
+    pat (i < 10) {
+        i = i + 1;
+        hlyin (i == 3) {
+            shar;
+        }
+        hlyin (i == 7) {
+            yut;
+        }
+    }
+    pyan 0;
+}
+"#;
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let _program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+    }
+
+    #[test]
+    fn test_closure_literal_and_function_type() {
+        let input = r#"
+loke on_message(loke(sar) -> kain callback) -> kain {
+    pyan callback("hello");
+}
+
+loke main() -> kain {
+    on_message(loke(sar msg) -> kain {
+        pya(msg);
+        pyan 0;
+    });
+    pyan 0;
+}
+"#;
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let _program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
     }
 }

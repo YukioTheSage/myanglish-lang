@@ -6,3 +6,4 @@ pub mod typecheck;
 pub mod codegen;
 pub mod codegen_go;
 pub mod formatter;
+pub mod stdlib;
