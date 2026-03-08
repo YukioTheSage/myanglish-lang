@@ -6,9 +6,11 @@ use std::process::Command;
 use mlang::lexer::Lexer;
 use mlang::parser::Parser;
 use mlang::typecheck::{Environment, TypeChecker};
+use mlang::ast::Statement;
 use mlang::codegen::CodeGenerator;
 use mlang::codegen_go::GoCodeGenerator;
 use mlang::formatter;
+use mlang::stdlib::resolve_stdlib_module;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -208,6 +210,18 @@ fn compile_file(file_path: &str, target: &str) -> Option<String> {
 }
 
 fn compile_with_c_backend(program: &mlang::ast::Program, file_stem: &str, exe_file_name: &str) -> Option<String> {
+    for stmt in &program.statements {
+        if let Statement::Import { module, .. } = stmt {
+            if let Some(module_info) = resolve_stdlib_module(module) {
+                eprintln!(
+                    "C backend does not support stdlib module `{}` (import `{}`). Use `--target go`.",
+                    module_info.mlang_name, module
+                );
+                return None;
+            }
+        }
+    }
+
     println!("-> Generating C Code");
     let mut codegen = CodeGenerator::new();
     let c_code = codegen.generate(program);
