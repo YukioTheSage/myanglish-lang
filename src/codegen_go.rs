@@ -1,10 +1,12 @@
 use crate::ast::{BlockStatement, Expression, IfAlternative, Program, Statement, Type};
+use crate::stdlib::{resolve_stdlib_module, StdlibModule};
+use std::collections::{BTreeSet, HashMap};
 
 pub struct GoCodeGenerator {
     pub output: String,
     indent_level: usize,
-    environment: std::collections::HashMap<String, Type>,
-    array_lengths: std::collections::HashMap<String, usize>,
+    environment: HashMap<String, Type>,
+    array_lengths: HashMap<String, usize>,
     loop_counter: usize,
     /// Track which helper functions are needed
     needs_read_input: bool,
@@ -16,7 +18,9 @@ pub struct GoCodeGenerator {
     /// Track if we're currently inside main() (Go main has no return value)
     in_main: bool,
     /// Registry of struct name -> fields (name, type) for type inference
-    struct_fields: std::collections::HashMap<String, Vec<(String, Type)>>,
+    struct_fields: HashMap<String, Vec<(String, Type)>>,
+    /// Imported hard-coded stdlib modules by alias
+    stdlib_modules: HashMap<String, StdlibModule>,
 }
 
 impl GoCodeGenerator {
@@ -24,8 +28,8 @@ impl GoCodeGenerator {
         GoCodeGenerator {
             output: String::new(),
             indent_level: 0,
-            environment: std::collections::HashMap::new(),
-            array_lengths: std::collections::HashMap::new(),
+            environment: HashMap::new(),
+            array_lengths: HashMap::new(),
             loop_counter: 0,
             needs_read_input: false,
             needs_strconv: false,
@@ -33,7 +37,8 @@ impl GoCodeGenerator {
             needs_errors: false,
             needs_fmt: true,
             in_main: false,
-            struct_fields: std::collections::HashMap::new(),
+            struct_fields: HashMap::new(),
+            stdlib_modules: HashMap::new(),
         }
     }
 
@@ -45,29 +50,34 @@ impl GoCodeGenerator {
         self.output.push_str("package main\n\n");
 
         // Imports
-        let mut imports: Vec<&str> = Vec::new();
+        let mut imports: BTreeSet<String> = BTreeSet::new();
         if self.needs_fmt {
-            imports.push("\"fmt\"");
+            imports.insert("\"fmt\"".to_string());
         }
 
         // Check if we need bufio/os for read input
         if self.needs_read_input {
-            imports.push("\"bufio\"");
-            imports.push("\"os\"");
+            imports.insert("\"bufio\"".to_string());
+            imports.insert("\"os\"".to_string());
         }
         if self.needs_strconv {
-            imports.push("\"strconv\"");
+            imports.insert("\"strconv\"".to_string());
         }
         if self.needs_strings {
-            imports.push("\"strings\"");
+            imports.insert("\"strings\"".to_string());
         }
         if self.needs_errors {
-            imports.push("\"errors\"");
+            imports.insert("\"errors\"".to_string());
+        }
+
+        for module in self.stdlib_modules.values() {
+            for go_import in &module.go_imports {
+                imports.insert(format!("\"{}\"", go_import));
+            }
         }
 
         if !imports.is_empty() {
             self.output.push_str("import (\n");
-            imports.sort();
             for imp in &imports {
                 self.output.push_str(&format!("\t{}\n", imp));
             }
@@ -85,6 +95,8 @@ impl GoCodeGenerator {
             self.output.push_str("\treturn scanner.Text()\n");
             self.output.push_str("}\n\n");
         }
+
+        self.emit_stdlib_helpers();
 
         // Generate all statements
         // We need to separate: function declarations go at top level,
@@ -109,6 +121,17 @@ impl GoCodeGenerator {
             Statement::Let { value, .. } => self.scan_expression(value),
             Statement::LetDestructured { value, .. } => self.scan_expression(value),
             Statement::Assign { value, .. } => self.scan_expression(value),
+            Statement::FieldAssign { value, .. } => self.scan_expression(value),
+            Statement::IndexAssign {
+                object,
+                index,
+                value,
+                ..
+            } => {
+                self.scan_expression(object);
+                self.scan_expression(index);
+                self.scan_expression(value);
+            }
             Statement::Print { value } => self.scan_expression(value),
             Statement::Return { value } => self.scan_expression(value),
             Statement::If { condition, consequence, alternative } => {
@@ -125,6 +148,7 @@ impl GoCodeGenerator {
                 self.scan_expression(condition);
                 self.scan_block(body);
             }
+            Statement::Break | Statement::Continue => {}
             Statement::ForIn { collection, body, .. } => {
                 self.scan_expression(collection);
                 self.scan_block(body);
@@ -132,7 +156,16 @@ impl GoCodeGenerator {
             Statement::FunctionDecl { body, .. } => self.scan_block(body),
             Statement::MethodDecl { body, .. } => self.scan_block(body),
             Statement::ExpressionStatement(expr) => self.scan_expression(expr),
-            Statement::Import { .. } => {}
+            Statement::Import { module, .. } => {
+                if let Some(stdlib_module) = resolve_stdlib_module(module) {
+                    for module_struct in &stdlib_module.structs {
+                        self.struct_fields
+                            .insert(module_struct.name.to_string(), module_struct.fields.clone());
+                    }
+                    self.stdlib_modules
+                        .insert(stdlib_module.alias.to_string(), stdlib_module);
+                }
+            }
             Statement::StructDecl { .. } => {}
             Statement::InterfaceDecl { .. } => {}
         }
@@ -212,12 +245,224 @@ impl GoCodeGenerator {
                     self.scan_expression(expr);
                 }
             }
+            Expression::ClosureLiteral { body, .. } => {
+                self.scan_block(body);
+            }
             Expression::TupleLiteral { elements } => {
                 for el in elements {
                     self.scan_expression(el);
                 }
             }
             _ => {}
+        }
+    }
+
+    fn emit_stdlib_helpers(&mut self) {
+        let mut aliases: Vec<String> = self.stdlib_modules.keys().cloned().collect();
+        aliases.sort();
+        for alias in aliases {
+            match alias.as_str() {
+                "http" => self.emit_http_helpers(),
+                "json" => self.emit_json_helpers(),
+                "file" => self.emit_file_helpers(),
+                "su_nit" => self.emit_su_nit_helpers(),
+                _ => {}
+            }
+        }
+    }
+
+    fn emit_http_helpers(&mut self) {
+        self.output.push_str("type MlangHTTPResponse struct {\n");
+        self.output.push_str("\tStatus int64\n");
+        self.output.push_str("\tBody string\n");
+        self.output.push_str("\tHeaders map[string]string\n");
+        self.output.push_str("}\n\n");
+
+        self.output.push_str("func mlangHTTPGet(url string) (MlangHTTPResponse, error) {\n");
+        self.output.push_str("\tresp, err := http.Get(url)\n");
+        self.output.push_str("\tif err != nil {\n");
+        self.output.push_str("\t\treturn MlangHTTPResponse{}, err\n");
+        self.output.push_str("\t}\n");
+        self.output.push_str("\tdefer resp.Body.Close()\n");
+        self.output.push_str("\tbody, err := io.ReadAll(resp.Body)\n");
+        self.output.push_str("\tif err != nil {\n");
+        self.output.push_str("\t\treturn MlangHTTPResponse{}, err\n");
+        self.output.push_str("\t}\n");
+        self.output.push_str("\theaders := map[string]string{}\n");
+        self.output.push_str("\tfor k, v := range resp.Header {\n");
+        self.output.push_str("\t\tif len(v) > 0 {\n");
+        self.output.push_str("\t\t\theaders[k] = v[0]\n");
+        self.output.push_str("\t\t}\n");
+        self.output.push_str("\t}\n");
+        self.output.push_str(
+            "\treturn MlangHTTPResponse{Status: int64(resp.StatusCode), Body: string(body), Headers: headers}, nil\n",
+        );
+        self.output.push_str("}\n\n");
+
+        self.output.push_str("func mlangHTTPPost(url string, body string) (MlangHTTPResponse, error) {\n");
+        self.output
+            .push_str("\tresp, err := http.Post(url, \"application/json\", strings.NewReader(body))\n");
+        self.output.push_str("\tif err != nil {\n");
+        self.output.push_str("\t\treturn MlangHTTPResponse{}, err\n");
+        self.output.push_str("\t}\n");
+        self.output.push_str("\tdefer resp.Body.Close()\n");
+        self.output.push_str("\trespBody, err := io.ReadAll(resp.Body)\n");
+        self.output.push_str("\tif err != nil {\n");
+        self.output.push_str("\t\treturn MlangHTTPResponse{}, err\n");
+        self.output.push_str("\t}\n");
+        self.output.push_str("\theaders := map[string]string{}\n");
+        self.output.push_str("\tfor k, v := range resp.Header {\n");
+        self.output.push_str("\t\tif len(v) > 0 {\n");
+        self.output.push_str("\t\t\theaders[k] = v[0]\n");
+        self.output.push_str("\t\t}\n");
+        self.output.push_str("\t}\n");
+        self.output.push_str(
+            "\treturn MlangHTTPResponse{Status: int64(resp.StatusCode), Body: string(respBody), Headers: headers}, nil\n",
+        );
+        self.output.push_str("}\n\n");
+    }
+
+    fn emit_json_helpers(&mut self) {
+        self.output.push_str("func mlangJSONEncode(data map[string]int64) (string, error) {\n");
+        self.output.push_str("\tencoded, err := json.Marshal(data)\n");
+        self.output.push_str("\tif err != nil {\n");
+        self.output.push_str("\t\treturn \"\", err\n");
+        self.output.push_str("\t}\n");
+        self.output.push_str("\treturn string(encoded), nil\n");
+        self.output.push_str("}\n\n");
+
+        self.output.push_str("func mlangJSONDecodeMapInt(payload string) (map[string]int64, error) {\n");
+        self.output.push_str("\traw := map[string]interface{}{}\n");
+        self.output.push_str("\tif err := json.Unmarshal([]byte(payload), &raw); err != nil {\n");
+        self.output.push_str("\t\treturn nil, err\n");
+        self.output.push_str("\t}\n");
+        self.output.push_str("\tout := map[string]int64{}\n");
+        self.output.push_str("\tfor key, value := range raw {\n");
+        self.output.push_str("\t\tnum, ok := value.(float64)\n");
+        self.output.push_str("\t\tif !ok {\n");
+        self.output.push_str("\t\t\treturn nil, fmt.Errorf(\"json.decode expected number for key %s\", key)\n");
+        self.output.push_str("\t\t}\n");
+        self.output.push_str("\t\tif num != float64(int64(num)) {\n");
+        self.output.push_str("\t\t\treturn nil, fmt.Errorf(\"json.decode expected integer-compatible number for key %s\", key)\n");
+        self.output.push_str("\t\t}\n");
+        self.output.push_str("\t\tout[key] = int64(num)\n");
+        self.output.push_str("\t}\n");
+        self.output.push_str("\treturn out, nil\n");
+        self.output.push_str("}\n\n");
+    }
+
+    fn emit_file_helpers(&mut self) {
+        self.output.push_str("func mlangFileRead(path string) (string, error) {\n");
+        self.output.push_str("\tdata, err := os.ReadFile(path)\n");
+        self.output.push_str("\tif err != nil {\n");
+        self.output.push_str("\t\treturn \"\", err\n");
+        self.output.push_str("\t}\n");
+        self.output.push_str("\treturn string(data), nil\n");
+        self.output.push_str("}\n\n");
+
+        self.output.push_str("func mlangFileWrite(path string, content string) error {\n");
+        self.output.push_str("\treturn os.WriteFile(path, []byte(content), 0o644)\n");
+        self.output.push_str("}\n\n");
+    }
+
+    fn emit_su_nit_helpers(&mut self) {
+        self.output.push_str("func mlangArgs() []string {\n");
+        self.output.push_str("\tif len(os.Args) <= 1 {\n");
+        self.output.push_str("\t\treturn []string{}\n");
+        self.output.push_str("\t}\n");
+        self.output.push_str("\treturn os.Args[1:]\n");
+        self.output.push_str("}\n\n");
+    }
+
+    fn try_generate_stdlib_call(
+        &mut self,
+        object: &Expression,
+        method: &str,
+        arguments: &[Expression],
+    ) -> bool {
+        let alias = match object {
+            Expression::Identifier(name) => name.as_str(),
+            _ => return false,
+        };
+
+        if !self.stdlib_modules.contains_key(alias) {
+            return false;
+        }
+
+        match (alias, method) {
+            ("http", "get") => {
+                self.output.push_str("mlangHTTPGet(");
+                if let Some(url) = arguments.first() {
+                    self.generate_expression(url);
+                }
+                self.output.push_str(")");
+                true
+            }
+            ("http", "post") => {
+                self.output.push_str("mlangHTTPPost(");
+                if let Some(url) = arguments.first() {
+                    self.generate_expression(url);
+                }
+                self.output.push_str(", ");
+                if let Some(body) = arguments.get(1) {
+                    self.generate_expression(body);
+                } else {
+                    self.output.push_str("\"\"");
+                }
+                self.output.push_str(")");
+                true
+            }
+            ("json", "encode") => {
+                self.output.push_str("mlangJSONEncode(");
+                if let Some(value) = arguments.first() {
+                    self.generate_expression(value);
+                }
+                self.output.push_str(")");
+                true
+            }
+            ("json", "decode") => {
+                self.output.push_str("mlangJSONDecodeMapInt(");
+                if let Some(value) = arguments.first() {
+                    self.generate_expression(value);
+                }
+                self.output.push_str(")");
+                true
+            }
+            ("file", "read") => {
+                self.output.push_str("mlangFileRead(");
+                if let Some(path) = arguments.first() {
+                    self.generate_expression(path);
+                }
+                self.output.push_str(")");
+                true
+            }
+            ("file", "write") => {
+                self.output.push_str("mlangFileWrite(");
+                if let Some(path) = arguments.first() {
+                    self.generate_expression(path);
+                }
+                self.output.push_str(", ");
+                if let Some(content) = arguments.get(1) {
+                    self.generate_expression(content);
+                } else {
+                    self.output.push_str("\"\"");
+                }
+                self.output.push_str(")");
+                true
+            }
+            ("su_nit", "env") => {
+                self.output.push_str("os.Getenv(");
+                if let Some(key) = arguments.first() {
+                    self.generate_expression(key);
+                }
+                self.output.push_str(")");
+                true
+            }
+            ("su_nit", "args") => {
+                self.output.push_str("mlangArgs()");
+                true
+            }
+            _ => false,
         }
     }
 
@@ -261,11 +506,6 @@ impl GoCodeGenerator {
                 self.output.push_str(" := ");
                 self.generate_expression(value);
                 self.output.push_str("\n");
-                // Suppress unused variable warnings
-                for n in &name_strs {
-                    self.indent();
-                    self.output.push_str(&format!("_ = {}\n", n));
-                }
             }
             Statement::Assign { name, value, .. } => {
                 self.indent();
@@ -278,6 +518,35 @@ impl GoCodeGenerator {
                         self.array_lengths.insert(name.clone(), length);
                     }
                 }
+            }
+            Statement::FieldAssign {
+                object,
+                field,
+                value,
+                ..
+            } => {
+                self.indent();
+                self.output.push_str(&format!(
+                    "{}.{} = ",
+                    self.clean_identifier(object),
+                    capitalize_first(&self.clean_identifier(field))
+                ));
+                self.generate_expression(value);
+                self.output.push_str("\n");
+            }
+            Statement::IndexAssign {
+                object,
+                index,
+                value,
+                ..
+            } => {
+                self.indent();
+                self.generate_expression(object);
+                self.output.push_str("[");
+                self.generate_expression(index);
+                self.output.push_str("] = ");
+                self.generate_expression(value);
+                self.output.push_str("\n");
             }
             Statement::FunctionDecl { name, parameters, return_type, body, .. } => {
                 self.indent();
@@ -379,13 +648,31 @@ impl GoCodeGenerator {
                 self.generate_block(body);
                 self.output.push_str("\n");
             }
-            Statement::ForIn { iterator, collection, body, .. } => {
+            Statement::Break => {
+                self.indent();
+                self.output.push_str("break\n");
+            }
+            Statement::Continue => {
+                self.indent();
+                self.output.push_str("continue\n");
+            }
+            Statement::ForIn {
+                index,
+                iterator,
+                collection,
+                body,
+                ..
+            } => {
                 self.indent();
 
                 let iter_name = self.clean_identifier(iterator);
+                let index_name = index.as_ref().map(|n| self.clean_identifier(n));
 
                 if let Some(Type::Array(inner)) = self.infer_expression_type(collection) {
                     self.environment.insert(iterator.clone(), *inner);
+                }
+                if let Some(index_var) = index {
+                    self.environment.insert(index_var.clone(), Type::Kain);
                 }
 
                 if let Expression::Identifier(name) = collection {
@@ -394,20 +681,63 @@ impl GoCodeGenerator {
                     }
                 }
 
-                self.output.push_str(&format!("for _, {} := range ", iter_name));
+                if let Some(idx) = index_name {
+                    self.output
+                        .push_str(&format!("for {}, {} := range ", idx, iter_name));
+                } else {
+                    self.output.push_str(&format!("for _, {} := range ", iter_name));
+                }
                 self.generate_expression(collection);
                 self.output.push_str(" ");
                 self.generate_block(body);
                 self.output.push_str("\n");
             }
             Statement::ExpressionStatement(expr) => {
+                if let Expression::MethodCall {
+                    object,
+                    method,
+                    arguments,
+                } = expr
+                {
+                    let obj_type = self.infer_expression_type(object);
+                    if let (Some(Type::Array(_)), Expression::Identifier(obj_name), "push") =
+                        (obj_type, object.as_ref(), method.as_str())
+                    {
+                        self.indent();
+                        self.output
+                            .push_str(&format!("{} = append({}, ", obj_name, obj_name));
+                        if let Some(arg) = arguments.first() {
+                            self.generate_expression(arg);
+                        }
+                        self.output.push_str(")\n");
+                        return;
+                    }
+                    if let (Some(Type::Array(_)), Expression::Identifier(obj_name), "remove") =
+                        (self.infer_expression_type(object), object.as_ref(), method.as_str())
+                    {
+                        self.indent();
+                        self.output.push_str(&format!(
+                            "{} = append({}[0:",
+                            obj_name, obj_name
+                        ));
+                        if let Some(arg) = arguments.first() {
+                            self.generate_expression(arg);
+                        }
+                        self.output.push_str("], ");
+                        self.output.push_str(obj_name);
+                        self.output.push_str("[");
+                        if let Some(arg) = arguments.first() {
+                            self.generate_expression(arg);
+                        }
+                        self.output.push_str("+1:]...)\n");
+                        return;
+                    }
+                }
                 self.indent();
                 self.generate_expression(expr);
                 self.output.push_str("\n");
             }
-            Statement::Import { module, .. } => {
-                self.output.push_str(&format!("// import \"{}\"\n", module));
-            }
+            Statement::Import { .. } => {}
             Statement::StructDecl { name, fields, .. } => {
                 // Register struct fields for type inference
                 self.struct_fields.insert(name.clone(), fields.clone());
@@ -709,6 +1039,10 @@ impl GoCodeGenerator {
                 }
             }
             Expression::MethodCall { object, method, arguments } => {
+                if self.try_generate_stdlib_call(object, method, arguments) {
+                    return;
+                }
+
                 // Check for built-in string methods
                 let obj_type = self.infer_expression_type(object);
                 match (obj_type.as_ref(), method.as_str()) {
@@ -729,6 +1063,35 @@ impl GoCodeGenerator {
                             self.generate_expression(&arguments[0]);
                         }
                         self.output.push_str(")");
+                    }
+                    (Some(Type::Array(_)), "push") => {
+                        self.output.push_str("append(");
+                        self.generate_expression(object);
+                        self.output.push_str(", ");
+                        if let Some(arg) = arguments.first() {
+                            self.generate_expression(arg);
+                        }
+                        self.output.push_str(")");
+                    }
+                    (Some(Type::Array(_)), "remove") => {
+                        self.output.push_str("append(");
+                        self.generate_expression(object);
+                        self.output.push_str("[:");
+                        if let Some(arg) = arguments.first() {
+                            self.generate_expression(arg);
+                        }
+                        self.output.push_str("], ");
+                        self.generate_expression(object);
+                        self.output.push_str("[");
+                        if let Some(arg) = arguments.first() {
+                            self.generate_expression(arg);
+                        }
+                        self.output.push_str("+1:]...)");
+                    }
+                    (Some(Type::Array(_)), "len") | (Some(Type::Map(_, _)), "len") => {
+                        self.output.push_str("int64(len(");
+                        self.generate_expression(object);
+                        self.output.push_str("))");
                     }
                     _ => {
                         // Regular method call: obj.method(args)
@@ -759,6 +1122,36 @@ impl GoCodeGenerator {
                     }
                 }
                 self.output.push_str("}");
+            }
+            Expression::ClosureLiteral {
+                parameters,
+                return_type,
+                body,
+            } => {
+                let saved_env = self.environment.clone();
+                let prev_in_main = self.in_main;
+                self.in_main = false;
+
+                self.output.push_str("func(");
+                for (i, (name, ty, _)) in parameters.iter().enumerate() {
+                    self.environment.insert(name.clone(), ty.clone());
+                    self.output
+                        .push_str(&format!("{} ", self.clean_identifier(name)));
+                    self.generate_type(ty);
+                    if i < parameters.len() - 1 {
+                        self.output.push_str(", ");
+                    }
+                }
+                self.output.push_str(")");
+                if *return_type != Type::Nil {
+                    self.output.push_str(" ");
+                    self.generate_type(return_type);
+                }
+                self.output.push_str(" ");
+                self.generate_block(body);
+
+                self.environment = saved_env;
+                self.in_main = prev_in_main;
             }
             Expression::ErrorCreate { message } => {
                 self.output.push_str("errors.New(");
@@ -797,7 +1190,7 @@ impl GoCodeGenerator {
                 self.generate_type(val);
             }
             Type::Struct(name) => {
-                self.output.push_str(&self.clean_identifier(name));
+                self.output.push_str(&self.go_struct_name(name));
             }
             Type::Interface(name) => {
                 self.output.push_str(&self.clean_identifier(name));
@@ -812,6 +1205,20 @@ impl GoCodeGenerator {
                     }
                 }
                 self.output.push_str(")");
+            }
+            Type::Function { params, return_type } => {
+                self.output.push_str("func(");
+                for (i, param_ty) in params.iter().enumerate() {
+                    self.generate_type(param_ty);
+                    if i < params.len() - 1 {
+                        self.output.push_str(", ");
+                    }
+                }
+                self.output.push_str(")");
+                if **return_type != Type::Nil {
+                    self.output.push_str(" ");
+                    self.generate_type(return_type);
+                }
             }
         }
     }
@@ -830,7 +1237,7 @@ impl GoCodeGenerator {
                     "int64".to_string()
                 }
             }
-            Expression::StructLiteral { name, .. } => self.clean_identifier(name),
+            Expression::StructLiteral { name, .. } => self.go_struct_name(name),
             Expression::ErrorCreate { .. } => "error".to_string(),
             _ => "int64".to_string(),
         }
@@ -846,12 +1253,32 @@ impl GoCodeGenerator {
             Type::Error => "error".to_string(),
             Type::Array(inner) => format!("[]{}", self.type_to_go_string(inner)),
             Type::Map(k, v) => format!("map[{}]{}", self.type_to_go_string(k), self.type_to_go_string(v)),
-            Type::Struct(name) => self.clean_identifier(name),
+            Type::Struct(name) => self.go_struct_name(name),
             Type::Interface(name) => self.clean_identifier(name),
             Type::Tuple(types) => {
                 let ts: Vec<String> = types.iter().map(|t| self.type_to_go_string(t)).collect();
                 format!("({})", ts.join(", "))
             }
+            Type::Function { params, return_type } => {
+                let param_strings: Vec<String> =
+                    params.iter().map(|p| self.type_to_go_string(p)).collect();
+                if **return_type == Type::Nil {
+                    format!("func({})", param_strings.join(", "))
+                } else {
+                    format!(
+                        "func({}) {}",
+                        param_strings.join(", "),
+                        self.type_to_go_string(return_type)
+                    )
+                }
+            }
+        }
+    }
+
+    fn go_struct_name(&self, name: &str) -> String {
+        match name {
+            "http.Response" => "MlangHTTPResponse".to_string(),
+            _ => self.clean_identifier(name),
         }
     }
 
@@ -879,6 +1306,31 @@ impl GoCodeGenerator {
                 }
             }
             Expression::ReadInput { .. } => Some(Type::Sar),
+            Expression::MethodCall {
+                object,
+                method,
+                arguments: _,
+            } => {
+                if let Expression::Identifier(alias) = object.as_ref() {
+                    if let Some(module) = self.stdlib_modules.get(alias) {
+                        if let Some(module_fn) = module.functions.iter().find(|f| f.name == method) {
+                            return Some(module_fn.return_type.clone());
+                        }
+                    }
+                }
+
+                let obj_ty = self.infer_expression_type(object)?;
+                match (obj_ty, method.as_str()) {
+                    (Type::Sar, "khwae") => Some(Type::Array(Box::new(Type::Sar))),
+                    (Type::Sar, "swal") => Some(Type::Sit),
+                    (Type::Sar, "ashay") => Some(Type::Kain),
+                    (Type::Array(inner), "push") => Some(Type::Array(inner)),
+                    (Type::Array(inner), "remove") => Some(Type::Array(inner)),
+                    (Type::Array(_), "len") => Some(Type::Kain),
+                    (Type::Map(_, _), "len") => Some(Type::Kain),
+                    _ => None,
+                }
+            }
             Expression::FieldAccess { object, field } => {
                 // Try to infer field type from struct
                 if let Some(Type::Struct(struct_name)) = self.infer_expression_type(object) {
@@ -894,6 +1346,14 @@ impl GoCodeGenerator {
                 }
             }
             Expression::StructLiteral { name, .. } => Some(Type::Struct(name.clone())),
+            Expression::ClosureLiteral {
+                parameters,
+                return_type,
+                ..
+            } => Some(Type::Function {
+                params: parameters.iter().map(|(_, ty, _)| ty.clone()).collect(),
+                return_type: Box::new(return_type.clone()),
+            }),
             Expression::ErrorCreate { .. } => Some(Type::Error),
             Expression::Binary { left, operator, right } => {
                 let left_ty = self.infer_expression_type(left)?;
@@ -1032,6 +1492,30 @@ mod tests {
 
         assert!(go_code.contains("[]int64{1, 2, 3}"));
         assert!(go_code.contains("for _, item := range numbers"));
+    }
+
+    #[test]
+    fn test_go_codegen_for_in_loop_with_index() {
+        let input = r#"
+            loke main() -> kain {
+                su<kain> numbers = [၁, ၂, ၃];
+                pat (kain i, kain item) htae numbers {
+                    pya(i);
+                    pya(item);
+                }
+                pyan 0;
+            }
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+
+        let mut codegen = GoCodeGenerator::new();
+        let go_code = codegen.generate(&program);
+
+        assert!(go_code.contains("for i, item := range numbers"));
     }
 
     #[test]
@@ -1175,5 +1659,238 @@ mod tests {
         assert!(go_code.contains("if (age > 18)"));
         assert!(go_code.contains("} else if (age == 18)"));
         assert!(go_code.contains("} else {"));
+    }
+
+    #[test]
+    fn test_go_codegen_struct_field_assignment() {
+        let input = r#"
+            pone Person { sar name; kain age; }
+            loke main() -> kain {
+                Person p = Person { name: "Aung", age: 20 };
+                p.name = "Ko Ko";
+                p.age = 25;
+                pyan 0;
+            }
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+
+        let mut codegen = GoCodeGenerator::new();
+        let go_code = codegen.generate(&program);
+
+        assert!(go_code.contains("p.Name = \"Ko Ko\""));
+        assert!(go_code.contains("p.Age = 25"));
+    }
+
+    #[test]
+    fn test_go_codegen_index_assignment() {
+        let input = r#"
+            loke main() -> kain {
+                su<kain> nums = [1, 2, 3];
+                nums[0] = 10;
+                twe<sar, kain> prices = {"tea": 500};
+                prices["coffee"] = 800;
+                pyan 0;
+            }
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+
+        let mut codegen = GoCodeGenerator::new();
+        let go_code = codegen.generate(&program);
+
+        assert!(go_code.contains("nums[0] = 10"));
+        assert!(go_code.contains("prices[\"coffee\"] = 800"));
+    }
+
+    #[test]
+    fn test_go_codegen_array_push_statement() {
+        let input = r#"
+            loke main() -> kain {
+                su<kain> nums = [1, 2];
+                nums.push(3);
+                pyan 0;
+            }
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+
+        let mut codegen = GoCodeGenerator::new();
+        let go_code = codegen.generate(&program);
+
+        assert!(go_code.contains("nums = append(nums, 3)"));
+    }
+
+    #[test]
+    fn test_go_codegen_destructured_error_vars_are_usable() {
+        let input = r#"
+            loke divide(kain a, kain b) -> (kain, amhar) {
+                hlyin (b == 0) {
+                    pyan (0, amhar("division by zero"));
+                }
+                pyan (a / b, bhala);
+            }
+            loke main() -> kain {
+                kain result, amhar err = divide(10, 0);
+                hlyin (err != bhala) {
+                    pya("Error occurred");
+                }
+                pya(result);
+                pyan 0;
+            }
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+
+        let mut codegen = GoCodeGenerator::new();
+        let go_code = codegen.generate(&program);
+
+        assert!(!go_code.contains("_ = result"));
+        assert!(!go_code.contains("_ = err"));
+        assert!(go_code.contains("if (err != nil)"));
+    }
+
+    #[test]
+    fn test_go_codegen_break_continue() {
+        let input = r#"
+            loke main() -> kain {
+                kain i = 0;
+                pat (i < 10) {
+                    i = i + 1;
+                    hlyin (i == 3) {
+                        shar;
+                    }
+                    hlyin (i == 7) {
+                        yut;
+                    }
+                }
+                pyan 0;
+            }
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+
+        let mut codegen = GoCodeGenerator::new();
+        let go_code = codegen.generate(&program);
+
+        assert!(go_code.contains("continue"));
+        assert!(go_code.contains("break"));
+    }
+
+    #[test]
+    fn test_go_codegen_closure_callback() {
+        let input = r#"
+            loke on_message(loke(sar) -> kain callback) -> kain {
+                pyan callback("hello");
+            }
+
+            loke main() -> kain {
+                on_message(loke(sar msg) -> kain {
+                    pya(msg);
+                    pyan 0;
+                });
+                pyan 0;
+            }
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+
+        let mut codegen = GoCodeGenerator::new();
+        let go_code = codegen.generate(&program);
+
+        assert!(go_code.contains("func on_message(callback func(string) int64) int64"));
+        assert!(go_code.contains("on_message(func(msg string) int64"));
+    }
+
+    #[test]
+    fn test_go_codegen_stdlib_http_module() {
+        let input = r#"
+            yu "kainn/http";
+
+            loke main() -> kain {
+                http.Response res, amhar err = http.get("https://example.com");
+                hlyin (err == bhala) {
+                    pya(res.status);
+                }
+                pyan 0;
+            }
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+
+        let mut codegen = GoCodeGenerator::new();
+        let go_code = codegen.generate(&program);
+
+        assert!(go_code.contains("\"net/http\""));
+        assert!(go_code.contains("\"io\""));
+        assert!(go_code.contains("\"strings\""));
+        assert!(go_code.contains("type MlangHTTPResponse struct"));
+        assert!(go_code.contains("mlangHTTPGet(\"https://example.com\")"));
+        assert!(go_code.contains("res, err :="));
+    }
+
+    #[test]
+    fn test_go_codegen_stdlib_json_file_su_nit_modules() {
+        let input = r#"
+            yu "json";
+            yu "file";
+            yu "su_nit";
+
+            loke main() -> kain {
+                twe<sar, kain> payload = {"price": 5000};
+                sar encoded, amhar encode_err = json.encode(payload);
+                twe<sar, kain> parsed, amhar decode_err = json.decode(encoded);
+                sar content, amhar read_err = file.read("input.txt");
+                amhar write_err = file.write("output.txt", content);
+                sar token = su_nit.env("BOT_TOKEN");
+                su<sar> args = su_nit.args();
+                pya(parsed);
+                pya(token);
+                pya(args);
+                pya(encode_err);
+                pya(decode_err);
+                pya(read_err);
+                pya(write_err);
+                pyan 0;
+            }
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+
+        let mut codegen = GoCodeGenerator::new();
+        let go_code = codegen.generate(&program);
+
+        assert!(go_code.contains("\"encoding/json\""));
+        assert!(go_code.contains("\"os\""));
+        assert!(go_code.contains("mlangJSONEncode(payload)"));
+        assert!(go_code.contains("mlangJSONDecodeMapInt(encoded)"));
+        assert!(go_code.contains("mlangFileRead(\"input.txt\")"));
+        assert!(go_code.contains("mlangFileWrite(\"output.txt\", content)"));
+        assert!(go_code.contains("os.Getenv(\"BOT_TOKEN\")"));
+        assert!(go_code.contains("mlangArgs()"));
     }
 }
