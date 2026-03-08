@@ -1,0 +1,131 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "name": "M-Lang",
+    "scopeName": "source.mlang",
+    "patterns": [
+        {
+            "include": "#comments"
+        },
+        {
+            "include": "#strings"
+        },
+        {
+            "include": "#numbers"
+        },
+        {
+            "include": "#keywords"
+        },
+        {
+            "include": "#types"
+        },
+        {
+            "include": "#booleans"
+        },
+        {
+            "include": "#functions"
+        },
+        {
+            "include": "#operators"
+        },
+        {
+            "include": "#punctuation"
+        }
+    ],
+    "repository": {
+        "comments": {
+            "name": "comment.line.double-slash.mlang",
+            "match": "//.*$"
+        },
+        "strings": {
+            "name": "string.quoted.double.mlang",
+            "begin": "\"",
+            "end": "\"",
+            "patterns": [
+                {
+                    "name": "constant.character.escape.mlang",
+                    "match": "\\\\."
+                }
+            ]
+        },
+        "numbers": {
+            "patterns": [
+                {
+                    "name": "constant.numeric.float.mlang",
+                    "match": "\\b[0-9]+\\.[0-9]+\\b"
+                },
+                {
+                    "name": "constant.numeric.mlang",
+                    "match": "\\b[0-9]+\\b"
+                },
+                {
+                    "name": "constant.numeric.myanmar.mlang",
+                    "match": "[\\u1040-\\u1049]+"
+                }
+            ]
+        },
+        "keywords": {
+            "patterns": [
+                {
+                    "name": "keyword.control.mlang",
+                    "match": "\\b(hlyin|mo|pat|htae|pyan|yu|nee|myat)\\b"
+                },
+                {
+                    "name": "keyword.other.mlang",
+                    "match": "\\b(loke|pya|phat|pone|pyaung_kain|pyaung_sar|pyaung_da_tha|ashay)\\b"
+                }
+            ]
+        },
+        "types": {
+            "name": "storage.type.mlang",
+            "match": "\\b(kain|sar|sit|su|twe|da_tha|amhar)\\b"
+        },
+        "booleans": {
+            "name": "constant.language.boolean.mlang",
+            "match": "\\b(hman|hmar|bhala)\\b"
+        },
+        "functions": {
+            "patterns": [
+                {
+                    "name": "entity.name.function.mlang",
+                    "match": "(?<=loke\\s)[\\w\\u1000-\\u109F]+"
+                }
+            ]
+        },
+        "operators": {
+            "patterns": [
+                {
+                    "name": "keyword.operator.comparison.mlang",
+                    "match": "==|!=|>=|<=|>|<"
+                },
+                {
+                    "name": "keyword.operator.arithmetic.mlang",
+                    "match": "[+\\-*/]"
+                },
+                {
+                    "name": "keyword.operator.assignment.mlang",
+                    "match": "="
+                },
+                {
+                    "name": "keyword.operator.arrow.mlang",
+                    "match": "->"
+                },
+                {
+                    "name": "keyword.operator.dot.mlang",
+                    "match": "\\."
+                }
+            ]
+        },
+        "punctuation": {
+            "patterns": [
+                {
+                    "name": "punctuation.terminator.mlang",
+                    "match": ";"
+                },
+                {
+                    "name": "punctuation.separator.mlang",
+                    "match": ","
+                }
+            ]
+        }
+    }
+}

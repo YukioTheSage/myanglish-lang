@@ -1,0 +1,108 @@
+{
+    "name": "mlang-vscode",
+    "displayName": "M-Lang (Myanmar Language)",
+    "description": "Language support for M-Lang — a Myanmar script programming language",
+    "version": "0.1.0",
+    "publisher": "mlang",
+    "engines": {
+        "vscode": "^1.75.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "activationEvents": [
+        "onLanguage:mlang"
+    ],
+    "main": "./out/extension.js",
+    "contributes": {
+        "languages": [
+            {
+                "id": "mlang",
+                "aliases": [
+                    "M-Lang",
+                    "Myanmar Language",
+                    "mlang"
+                ],
+                "extensions": [
+                    ".ml"
+                ],
+                "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "mlang",
+                "scopeName": "source.mlang",
+                "path": "./syntaxes/mlang.tmLanguage.json"
+            }
+        ],
+        "configuration": {
+            "title": "M-Lang",
+            "properties": {
+                "mlang.server.path": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Path to the mlang-lsp executable. If empty, uses mlang-lsp from PATH."
+                },
+                "mlang.formatter.path": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Path to the mlang CLI executable used for document formatting. If empty, auto-detects local target binary or uses mlang from PATH."
+                },
+                "mlang.formatter.args": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "Extra CLI arguments prepended before fmt, useful for wrappers or runtime options."
+                },
+                "mlang.formatter.enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Enable/disable the M-Lang document formatter. When disabled, format-on-save and manual formatting are both inactive."
+                },
+                "mlang.trace.server": {
+                    "type": "string",
+                    "enum": [
+                        "off",
+                        "messages",
+                        "verbose"
+                    ],
+                    "default": "off",
+                    "description": "Traces the communication between VS Code and the mlang language server."
+                }
+            }
+        },
+        "commands": [
+            {
+                "command": "mlang.formatDocument",
+                "title": "M-Lang: Format Document"
+            },
+            {
+                "command": "mlang.restartServer",
+                "title": "M-Lang: Restart Language Server"
+            }
+        ],
+        "configurationDefaults": {
+            "[mlang]": {
+                "editor.defaultFormatter": "mlang.mlang-vscode",
+                "editor.formatOnSave": true,
+                "editor.formatOnSaveMode": "file"
+            }
+        }
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./"
+    },
+    "dependencies": {
+        "vscode-languageclient": "^9.0.1"
+    },
+    "devDependencies": {
+        "@types/node": "^18.0.0",
+        "@types/vscode": "^1.75.0",
+        "typescript": "^5.3.0"
+    }
+}

@@ -1,0 +1,10 @@
+/target
+
+# Local IDE/agent settings
+.vscode/
+.claude/settings.local.json
+
+# Generated artifacts from `mlang build` / `mlang run`
+*.exe
+/*.go
+/*.c
