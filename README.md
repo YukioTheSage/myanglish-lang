@@ -330,6 +330,29 @@ Built-in stdlib modules (Go backend):
 
 For these stdlib modules, use the Go backend (`--target go`). The C backend rejects them with a clear error.
 
+Example (`file` module):
+
+```
+yu "file";
+
+loke main() -> kain {
+    amhar write_err = file.write("output.txt", "Hello!");
+    hlyin (write_err != bhala) {
+        pya(write_err);
+        pyan 1;
+    }
+
+    sar content, amhar read_err = file.read("output.txt");
+    hlyin (read_err != bhala) {
+        pya(read_err);
+        pyan 1;
+    }
+
+    pya(content);
+    pyan 0;
+}
+```
+
 ### Comments
 
 Single-line comments start with `//`:
