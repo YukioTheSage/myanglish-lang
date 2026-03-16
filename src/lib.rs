@@ -7,3 +7,4 @@ pub mod codegen;
 pub mod codegen_go;
 pub mod formatter;
 pub mod stdlib;
+pub mod module_loader;

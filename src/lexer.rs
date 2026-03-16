@@ -274,6 +274,13 @@ fn lookup_ident(ident: &str) -> TokenKind {
         "mo" => TokenKind::Mo,
         "pat" => TokenKind::Pat,
         "htae" => TokenKind::Htae,
+        "laung" => TokenKind::Laung,
+        "baung" => TokenKind::Baung,
+        "yut" => TokenKind::Break,
+        "shar" => TokenKind::Continue,
+        "kyoe" => TokenKind::Kyoe,
+        "naut_sone" => TokenKind::NautSone,
+        "set_sae" => TokenKind::SetSae,
         "loke" => TokenKind::Loke,
         "pyan" => TokenKind::Pyan,
         "pya" => TokenKind::Pya,
@@ -281,6 +288,8 @@ fn lookup_ident(ident: &str) -> TokenKind {
         "su" => TokenKind::Su,
         "yu" => TokenKind::Yu,
         "twe" => TokenKind::Twe,
+        "atote" => TokenKind::Atote,
+        "pay" => TokenKind::Pay,
         "pone" => TokenKind::Pone,
         "nee" => TokenKind::Nee,
         "myat" => TokenKind::Myat,
@@ -342,5 +351,32 @@ mod tests {
             let tok = lexer.next_token();
             assert_eq!(tok.kind, expected_tok);
         }
+    }
+
+    #[test]
+    fn test_package_and_export_keywords() {
+        let input = "atote util; pay loke add() -> kain { pyan 0; }";
+        let mut lexer = Lexer::new(input);
+        assert_eq!(lexer.next_token().kind, Atote);
+        assert_eq!(lexer.next_token().kind, Identifier("util".to_string()));
+        assert_eq!(lexer.next_token().kind, Semicolon);
+        assert_eq!(lexer.next_token().kind, Pay);
+    }
+
+    #[test]
+    fn test_phase3_keywords() {
+        let input = "laung kyoe naut_sone";
+        let mut lexer = Lexer::new(input);
+        assert_eq!(lexer.next_token().kind, Laung);
+        assert_eq!(lexer.next_token().kind, Kyoe);
+        assert_eq!(lexer.next_token().kind, NautSone);
+    }
+
+    #[test]
+    fn test_phase4_keywords() {
+        let input = "baung set_sae";
+        let mut lexer = Lexer::new(input);
+        assert_eq!(lexer.next_token().kind, Baung);
+        assert_eq!(lexer.next_token().kind, SetSae);
     }
 }

@@ -10,13 +10,19 @@ pub enum Type {
     Sar,  // string
     Sit,  // bool
     DaTha, // float64
+    Baung, // context-like lifecycle scope
     Nil,  // nil type (type of bhala)
     Error, // error type (amhar)
     Array(Box<Type>),
+    Channel(Box<Type>),
     Map(Box<Type>, Box<Type>),
     Struct(String),
     Interface(String),
     Tuple(Vec<Type>),
+    Function {
+        params: Vec<Type>,
+        return_type: Box<Type>,
+    },
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -71,11 +77,23 @@ pub enum Expression {
         name: String,
         fields: Vec<(String, Expression)>,
     },
+    ClosureLiteral {
+        parameters: Vec<(String, Type, Span)>, // name, type, span
+        return_type: Type,
+        body: BlockStatement,
+    },
     ErrorCreate {
         message: Box<Expression>,
     },
     TupleLiteral {
         elements: Vec<Expression>,
+    },
+    ChannelMake {
+        value_type: Box<Type>,
+        capacity: Option<Box<Expression>>,
+    },
+    BaungCreate {
+        timeout_ms: Box<Expression>,
     },
 }
 
@@ -87,6 +105,10 @@ pub enum IfAlternative {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
+    PackageDecl {
+        name: String,
+        name_span: Span,
+    },
     Let {
         name: String,
         value: Expression,
@@ -102,6 +124,18 @@ pub enum Statement {
         value: Expression,
         name_span: Span,
     },
+    FieldAssign {
+        object: String,
+        field: String,
+        value: Expression,
+        name_span: Span,
+    },
+    IndexAssign {
+        object: Expression,
+        index: Expression,
+        value: Expression,
+        name_span: Span,
+    },
     If {
         condition: Expression,
         consequence: BlockStatement,
@@ -111,11 +145,31 @@ pub enum Statement {
         condition: Expression,
         body: BlockStatement,
     },
+    Break,
+    Continue,
+    Go {
+        call: Expression,
+    },
+    Defer {
+        call: Expression,
+    },
+    TestDecl {
+        name: String,
+        body: BlockStatement,
+        name_span: Span,
+    },
     ForIn {
+        index: Option<String>,
         iterator: String,
         collection: Expression,
         body: BlockStatement,
         name_span: Span,
+    },
+    ForClassic {
+        init: Option<Box<Statement>>,
+        condition: Option<Expression>,
+        post: Option<Box<Statement>>,
+        body: BlockStatement,
     },
     FunctionDecl {
         name: String,
@@ -152,6 +206,10 @@ pub enum Statement {
     InterfaceDecl {
         name: String,
         methods: Vec<(String, Vec<(String, Type)>, Type)>,
+        name_span: Span,
+    },
+    Export {
+        statement: Box<Statement>,
         name_span: Span,
     },
 }

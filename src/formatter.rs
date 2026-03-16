@@ -208,7 +208,9 @@ fn statement_is_block_like(stmt: &Statement) -> bool {
         Statement::If { .. }
             | Statement::While { .. }
             | Statement::ForIn { .. }
+            | Statement::ForClassic { .. }
             | Statement::FunctionDecl { .. }
+            | Statement::TestDecl { .. }
             | Statement::StructDecl { .. }
             | Statement::MethodDecl { .. }
             | Statement::InterfaceDecl { .. }
@@ -304,6 +306,9 @@ fn format_function_params(
 fn format_statement(stmt: &Statement, indent: usize, ctx: &mut FormatContext) -> String {
     let ind = indent_str(indent);
     match stmt {
+        Statement::PackageDecl { name, .. } => {
+            format!("{}atote {};", ind, name)
+        }
         Statement::Let { name, value, ty, .. } => {
             let ty_str = format_type(ty);
             let val_str = format_expression(value, indent, ctx);
@@ -373,6 +378,14 @@ fn format_statement(stmt: &Statement, indent: usize, ctx: &mut FormatContext) ->
         }
         Statement::Break => format!("{}yut;", ind),
         Statement::Continue => format!("{}shar;", ind),
+        Statement::Go { call } => {
+            let call_str = format_expression(call, indent, ctx);
+            format!("{}kyoe {};", ind, call_str)
+        }
+        Statement::Defer { call } => {
+            let call_str = format_expression(call, indent, ctx);
+            format!("{}naut_sone {};", ind, call_str)
+        }
         Statement::ForIn {
             index,
             iterator,
@@ -391,6 +404,29 @@ fn format_statement(stmt: &Statement, indent: usize, ctx: &mut FormatContext) ->
             result.push_str(&format!("{}}}", ind));
             result
         }
+        Statement::ForClassic {
+            init,
+            condition,
+            post,
+            body,
+        } => {
+            let init_str = init
+                .as_ref()
+                .map(|s| format_for_classic_component(s, indent, ctx))
+                .unwrap_or_default();
+            let cond_str = condition
+                .as_ref()
+                .map(|e| format_expression(e, indent, ctx))
+                .unwrap_or_default();
+            let post_str = post
+                .as_ref()
+                .map(|s| format_for_classic_component(s, indent, ctx))
+                .unwrap_or_default();
+            let mut result = format!("{}pat ({}; {}; {}) {{\n", ind, init_str, cond_str, post_str);
+            result.push_str(&format_block(body, indent + 1, ctx));
+            result.push_str(&format!("{}}}", ind));
+            result
+        }
         Statement::FunctionDecl {
             name,
             parameters,
@@ -401,6 +437,16 @@ fn format_statement(stmt: &Statement, indent: usize, ctx: &mut FormatContext) ->
             let params = format_function_params(parameters, indent);
             let ret = format_type(return_type);
             let mut result = format!("{}loke {}{} -> {} {{\n", ind, name, params, ret);
+            result.push_str(&format_block(body, indent + 1, ctx));
+            result.push_str(&format!("{}}}", ind));
+            result
+        }
+        Statement::TestDecl {
+            name,
+            body,
+            ..
+        } => {
+            let mut result = format!("{}set_sae {} {{\n", ind, name);
             result.push_str(&format_block(body, indent + 1, ctx));
             result.push_str(&format!("{}}}", ind));
             result
@@ -465,6 +511,14 @@ fn format_statement(stmt: &Statement, indent: usize, ctx: &mut FormatContext) ->
             result.push_str(&format!("{}}}", ind));
             result
         }
+        Statement::Export { statement, .. } => {
+            let rendered = format_statement(statement, indent, ctx);
+            if rendered.starts_with(&ind) {
+                format!("{}pay {}", ind, rendered[ind.len()..].trim_start())
+            } else {
+                format!("{}pay {}", ind, rendered)
+            }
+        }
     }
 }
 
@@ -496,6 +550,22 @@ fn format_elif(stmt: &Statement, indent: usize, ctx: &mut FormatContext) -> Stri
         result
     } else {
         format_statement(stmt, indent, ctx)
+    }
+}
+
+fn format_for_classic_component(stmt: &Statement, indent: usize, ctx: &mut FormatContext) -> String {
+    match stmt {
+        Statement::Let { name, value, ty, .. } => format!(
+            "{} {} = {}",
+            format_type(ty),
+            name,
+            format_expression(value, indent, ctx)
+        ),
+        Statement::Assign { name, value, .. } => {
+            format!("{} = {}", name, format_expression(value, indent, ctx))
+        }
+        Statement::ExpressionStatement(expr) => format_expression(expr, indent, ctx),
+        _ => String::new(),
     }
 }
 
@@ -634,6 +704,23 @@ fn format_expression(expr: &Expression, indent: usize, ctx: &mut FormatContext) 
             let vals: Vec<String> = elements.iter().map(|e| format_expression(e, indent, ctx)).collect();
             format!("({})", vals.join(", "))
         }
+        Expression::ChannelMake {
+            value_type,
+            capacity,
+        } => {
+            if let Some(cap_expr) = capacity {
+                format!(
+                    "laung<{}>({})",
+                    format_type(value_type),
+                    format_expression(cap_expr, indent, ctx)
+                )
+            } else {
+                format!("laung<{}>()", format_type(value_type))
+            }
+        }
+        Expression::BaungCreate { timeout_ms } => {
+            format!("baung({})", format_expression(timeout_ms, indent, ctx))
+        }
     }
 }
 
@@ -643,8 +730,10 @@ fn format_type(ty: &Type) -> String {
         Type::Sar => "sar".to_string(),
         Type::Sit => "sit".to_string(),
         Type::Array(inner) => format!("su<{}>", format_type(inner)),
+        Type::Channel(inner) => format!("laung<{}>", format_type(inner)),
         Type::Map(key, val) => format!("twe<{}, {}>", format_type(key), format_type(val)),
         Type::DaTha => "da_tha".to_string(),
+        Type::Baung => "baung".to_string(),
         Type::Nil => "bhala".to_string(),
         Type::Error => "amhar".to_string(),
         Type::Struct(name) => name.clone(),
@@ -780,5 +869,28 @@ yu "file";
         let result = format_source(input).unwrap();
         assert!(result.contains("yu \"json\";"));
         assert!(result.contains("yu \"file\";"));
+    }
+
+    #[test]
+    fn test_format_package_and_export() {
+        let input = r#"atote util;
+pay loke add(kain a, kain b)->kain{
+pyan a+b;
+}"#;
+        let result = format_source(input).unwrap();
+        assert!(result.contains("atote util;"));
+        assert!(result.contains("pay loke add("));
+    }
+
+    #[test]
+    fn test_format_classic_for_loop() {
+        let input = r#"loke main() -> kain {
+pat(kain i=0;i<3;i=i+1){
+pya(i);
+}
+pyan 0;
+}"#;
+        let result = format_source(input).unwrap();
+        assert!(result.contains("pat (kain i = 0; i < 3; i = i + 1)"));
     }
 }

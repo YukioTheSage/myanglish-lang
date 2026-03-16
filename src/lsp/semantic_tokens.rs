@@ -29,11 +29,16 @@ fn token_type_index(kind: &TokenKind) -> Option<u32> {
         | TokenKind::Mo
         | TokenKind::Pat
         | TokenKind::Htae
+        | TokenKind::Kyoe
+        | TokenKind::NautSone
+        | TokenKind::SetSae
         | TokenKind::Loke
         | TokenKind::Pyan
         | TokenKind::Pya
         | TokenKind::Phat
         | TokenKind::Yu
+        | TokenKind::Atote
+        | TokenKind::Pay
         | TokenKind::Hman
         | TokenKind::Hmar
         | TokenKind::Bhala
@@ -42,7 +47,7 @@ fn token_type_index(kind: &TokenKind) -> Option<u32> {
         | TokenKind::Myat => Some(0), // KEYWORD
 
         // Types
-        TokenKind::Kain | TokenKind::Sar | TokenKind::Sit | TokenKind::Su | TokenKind::Twe
+        TokenKind::Kain | TokenKind::Sar | TokenKind::Sit | TokenKind::Su | TokenKind::Laung | TokenKind::Baung | TokenKind::Twe
         | TokenKind::DaTha | TokenKind::Amhar => {
             Some(6) // TYPE
         }
@@ -88,12 +93,19 @@ fn token_length(kind: &TokenKind) -> u32 {
         TokenKind::Mo => 2,   // "mo"
         TokenKind::Pat => 3,  // "pat"
         TokenKind::Htae => 4, // "htae"
+        TokenKind::Kyoe => 5, // "kyoe"
+        TokenKind::NautSone => 9, // "naut_sone"
+        TokenKind::SetSae => 7, // "set_sae"
         TokenKind::Loke => 4, // "loke"
         TokenKind::Pyan => 4, // "pyan"
         TokenKind::Pya => 3,  // "pya"
         TokenKind::Phat => 4, // "phat"
         TokenKind::Su => 2,   // "su"
+        TokenKind::Laung => 5, // "laung"
+        TokenKind::Baung => 5, // "baung"
         TokenKind::Yu => 2,   // "yu"
+        TokenKind::Atote => 5, // "atote"
+        TokenKind::Pay => 3,   // "pay"
         TokenKind::Twe => 3,  // "twe"
         TokenKind::DaTha => 6, // "da_tha"
         TokenKind::Bhala => 5, // "bhala"

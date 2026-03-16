@@ -67,6 +67,7 @@ pub struct TypeChecker {
     /// Registry of interfaces: interface_name -> Vec<(method_name, param_types, return_type)>
     pub interface_registry: HashMap<String, Vec<(String, Vec<Type>, Type)>>,
     loop_depth: usize,
+    callable_depth: usize,
 }
 
 impl TypeChecker {
@@ -77,6 +78,7 @@ impl TypeChecker {
             method_registry: HashMap::new(),
             interface_registry: HashMap::new(),
             loop_depth: 0,
+            callable_depth: 0,
         }
     }
 
@@ -92,6 +94,10 @@ impl TypeChecker {
                         .zip(actual_items.iter())
                         .all(|(e, a)| self.is_assignable(e, a))
             }
+            (
+                Type::Channel(expected_inner),
+                Type::Channel(actual_inner),
+            ) => self.is_assignable(expected_inner, actual_inner),
             (
                 Type::Function {
                     params: expected_params,
@@ -113,6 +119,88 @@ impl TypeChecker {
         }
     }
 
+    fn is_channel_side_effect_value_use(&self, expr: &Expression, env: &Environment) -> bool {
+        let Expression::MethodCall { object, method, .. } = expr else {
+            return false;
+        };
+        if !matches!(method.as_str(), "send" | "close") {
+            return false;
+        }
+        let Expression::Identifier(name) = object.as_ref() else {
+            return false;
+        };
+        matches!(env.get(name), Some(Symbol { ty: Type::Channel(_), .. }))
+    }
+
+    fn report_channel_side_effect_value_use(&mut self, expr: &Expression, env: &Environment) {
+        if self.is_channel_side_effect_value_use(expr, env) {
+            self.push_error(
+                "Channel `send`/`close` can only be used as standalone statements".to_string(),
+            );
+        }
+    }
+
+    fn register_first_pass_statement(&mut self, stmt: &Statement, env: &mut Environment) {
+        match stmt {
+            Statement::StructDecl { name, fields, .. } => {
+                self.struct_registry.insert(name.clone(), fields.clone());
+            }
+            Statement::MethodDecl {
+                receiver_type,
+                name,
+                parameters,
+                return_type,
+                ..
+            } => {
+                let param_types: Vec<Type> =
+                    parameters.iter().map(|(_, ty, _)| ty.clone()).collect();
+                self.method_registry.insert(
+                    (receiver_type.clone(), name.clone()),
+                    (param_types, return_type.clone()),
+                );
+            }
+            Statement::InterfaceDecl { name, methods, .. } => {
+                let method_sigs: Vec<(String, Vec<Type>, Type)> = methods
+                    .iter()
+                    .map(|(mname, params, ret)| {
+                        let ptypes: Vec<Type> =
+                            params.iter().map(|(_, ty)| ty.clone()).collect();
+                        (mname.clone(), ptypes, ret.clone())
+                    })
+                    .collect();
+                self.interface_registry.insert(name.clone(), method_sigs);
+            }
+            Statement::FunctionDecl {
+                name,
+                parameters,
+                return_type,
+                ..
+            } => {
+                let param_types: Vec<Type> =
+                    parameters.iter().map(|(_, ty, _)| ty.clone()).collect();
+                env.set(
+                    name.clone(),
+                    Symbol {
+                        ty: Type::Function {
+                            params: param_types.clone(),
+                            return_type: Box::new(return_type.clone()),
+                        },
+                        is_function: true,
+                        parameters: param_types,
+                    },
+                );
+            }
+            Statement::Import { module, .. } => {
+                self.register_stdlib_import(module, env);
+            }
+            Statement::TestDecl { .. } => {}
+            Statement::Export { statement, .. } => {
+                self.register_first_pass_statement(statement, env);
+            }
+            _ => {}
+        }
+    }
+
     fn push_error(&mut self, message: String) {
         self.errors.push(TypeCheckError {
             message,
@@ -125,40 +213,7 @@ impl TypeChecker {
         // First pass: register all structs, methods, interfaces, and top-level functions
         // so they can be referenced before their declaration (forward references)
         for stmt in &program.statements {
-            match stmt {
-                Statement::StructDecl { name, fields, .. } => {
-                    self.struct_registry.insert(name.clone(), fields.clone());
-                }
-                Statement::MethodDecl { receiver_type, name, parameters, return_type, .. } => {
-                    let param_types: Vec<Type> = parameters.iter().map(|(_, ty, _)| ty.clone()).collect();
-                    self.method_registry.insert(
-                        (receiver_type.clone(), name.clone()),
-                        (param_types, return_type.clone()),
-                    );
-                }
-                Statement::InterfaceDecl { name, methods, .. } => {
-                    let method_sigs: Vec<(String, Vec<Type>, Type)> = methods.iter().map(|(mname, params, ret)| {
-                        let ptypes: Vec<Type> = params.iter().map(|(_, ty)| ty.clone()).collect();
-                        (mname.clone(), ptypes, ret.clone())
-                    }).collect();
-                    self.interface_registry.insert(name.clone(), method_sigs);
-                }
-                Statement::FunctionDecl { name, parameters, return_type, .. } => {
-                    let param_types: Vec<Type> = parameters.iter().map(|(_, ty, _)| ty.clone()).collect();
-                    env.set(name.clone(), Symbol {
-                        ty: Type::Function {
-                            params: param_types.clone(),
-                            return_type: Box::new(return_type.clone()),
-                        },
-                        is_function: true,
-                        parameters: param_types,
-                    });
-                }
-                Statement::Import { module, .. } => {
-                    self.register_stdlib_import(module, env);
-                }
-                _ => {}
-            }
+            self.register_first_pass_statement(stmt, env);
         }
 
         // Second pass: full type checking
@@ -169,7 +224,9 @@ impl TypeChecker {
 
     fn check_statement(&mut self, stmt: &Statement, env: &mut Environment) {
         match stmt {
+            Statement::PackageDecl { .. } => {}
             Statement::Let { name, value, ty, .. } => {
+                self.report_channel_side_effect_value_use(value, env);
                 let value_type = self.check_expression(value, env);
                 if let Some(vt) = value_type {
                     if !self.is_assignable(ty, &vt) {
@@ -184,6 +241,7 @@ impl TypeChecker {
                 }
             }
             Statement::LetDestructured { names, value } => {
+                self.report_channel_side_effect_value_use(value, env);
                 let value_type = self.check_expression(value, env);
                 if let Some(Type::Tuple(types)) = value_type {
                     if types.len() != names.len() {
@@ -203,6 +261,7 @@ impl TypeChecker {
                 }
             }
             Statement::Assign { name, value, .. } => {
+                self.report_channel_side_effect_value_use(value, env);
                 let var_symbol = env.get(name);
                 if let Some(sym) = var_symbol {
                     let value_type = self.check_expression(value, env);
@@ -332,15 +391,20 @@ impl TypeChecker {
                     });
                 }
                 
+                self.callable_depth += 1;
                 self.check_block_statement(body, &mut enclosed_env, Some(return_type));
+                self.callable_depth = self.callable_depth.saturating_sub(1);
             }
             Statement::Return { value } => {
+                self.report_channel_side_effect_value_use(value, env);
                 self.check_expression(value, env);
             }
             Statement::Print { value } => {
+                self.report_channel_side_effect_value_use(value, env);
                 self.check_expression(value, env);
             }
             Statement::If { condition, consequence, alternative } => {
+                self.report_channel_side_effect_value_use(condition, env);
                 let cond_ty = self.check_expression(condition, env);
                 if cond_ty != Some(Type::Sit) {
                     self.push_error(format!("If condition must be a boolean (sit), got {:?}", cond_ty));
@@ -358,6 +422,7 @@ impl TypeChecker {
                 }
             }
             Statement::While { condition, body } => {
+                self.report_channel_side_effect_value_use(condition, env);
                 let cond_ty = self.check_expression(condition, env);
                 if cond_ty != Some(Type::Sit) {
                     self.push_error(format!("While condition must be a boolean (sit), got {:?}", cond_ty));
@@ -408,11 +473,62 @@ impl TypeChecker {
                     None => {}
                 }
             }
+            Statement::ForClassic {
+                init,
+                condition,
+                post,
+                body,
+            } => {
+                let mut loop_env = Environment::new_enclosed(env.clone());
+                if let Some(init_stmt) = init {
+                    self.check_statement(init_stmt, &mut loop_env);
+                }
+                if let Some(cond_expr) = condition {
+                    self.report_channel_side_effect_value_use(cond_expr, &loop_env);
+                    let cond_ty = self.check_expression(cond_expr, &mut loop_env);
+                    if cond_ty != Some(Type::Sit) {
+                        self.push_error(format!(
+                            "Classic for-loop condition must be a boolean (sit), got {:?}",
+                            cond_ty
+                        ));
+                    }
+                }
+                self.loop_depth += 1;
+                self.check_block_statement(body, &mut loop_env, None);
+                if let Some(post_stmt) = post {
+                    self.check_statement(post_stmt, &mut loop_env);
+                }
+                self.loop_depth -= 1;
+            }
+            Statement::Go { call } => {
+                if !matches!(call, Expression::FunctionCall { .. } | Expression::MethodCall { .. }) {
+                    self.push_error("`kyoe` expects a function or method call".to_string());
+                }
+                self.check_expression(call, env);
+            }
+            Statement::Defer { call } => {
+                if self.callable_depth == 0 {
+                    self.push_error("`naut_sone` is only allowed inside function/method/closure bodies".to_string());
+                }
+                if !matches!(call, Expression::FunctionCall { .. } | Expression::MethodCall { .. }) {
+                    self.push_error("`naut_sone` expects a function or method call".to_string());
+                }
+                self.check_expression(call, env);
+            }
+            Statement::TestDecl { body, .. } => {
+                self.callable_depth += 1;
+                self.check_block_statement(body, env, Some(&Type::Error));
+                self.callable_depth = self.callable_depth.saturating_sub(1);
+            }
             Statement::ExpressionStatement(expr) => {
                 self.check_expression(expr, env);
             }
             Statement::Import { module, .. } => {
-                self.register_stdlib_import(module, env);
+                if self.register_stdlib_import(module, env) {
+                    // known stdlib import
+                } else {
+                    self.push_error(format!("Unknown import `{}`", module));
+                }
             }
             Statement::StructDecl { name, fields, .. } => {
                 self.struct_registry.insert(name.clone(), fields.clone());
@@ -437,7 +553,9 @@ impl TypeChecker {
                         parameters: vec![],
                     });
                 }
+                self.callable_depth += 1;
                 self.check_block_statement(body, &mut enclosed_env, Some(return_type));
+                self.callable_depth = self.callable_depth.saturating_sub(1);
             }
             Statement::InterfaceDecl { name, methods, .. } => {
                 let method_sigs: Vec<(String, Vec<Type>, Type)> = methods.iter().map(|(mname, params, ret)| {
@@ -445,6 +563,9 @@ impl TypeChecker {
                     (mname.clone(), ptypes, ret.clone())
                 }).collect();
                 self.interface_registry.insert(name.clone(), method_sigs);
+            }
+            Statement::Export { statement, .. } => {
+                self.check_statement(statement, env);
             }
         }
     }
@@ -466,9 +587,9 @@ impl TypeChecker {
         }
     }
 
-    fn register_stdlib_import(&mut self, module_name: &str, env: &mut Environment) {
+    fn register_stdlib_import(&mut self, module_name: &str, env: &mut Environment) -> bool {
         let Some(module) = resolve_stdlib_module(module_name) else {
-            return;
+            return false;
         };
 
         let module_type_name = format!("__module::{}", module.alias);
@@ -492,6 +613,17 @@ impl TypeChecker {
                 (module_func.params, module_func.return_type),
             );
         }
+
+        for module_method in module.methods {
+            self.method_registry.insert(
+                (
+                    module_method.receiver.to_string(),
+                    module_method.name.to_string(),
+                ),
+                (module_method.params, module_method.return_type),
+            );
+        }
+        true
     }
 
     fn check_expression(&mut self, expr: &Expression, env: &mut Environment) -> Option<Type> {
@@ -522,6 +654,31 @@ impl TypeChecker {
                     }
                 }
                 Some(Type::Array(Box::new(first_ty)))
+            }
+            Expression::ChannelMake {
+                value_type,
+                capacity,
+            } => {
+                if let Some(cap_expr) = capacity {
+                    let cap_ty = self.check_expression(cap_expr, env)?;
+                    if cap_ty != Type::Kain {
+                        self.push_error(format!(
+                            "laung capacity must be `kain`, got {:?}",
+                            cap_ty
+                        ));
+                    }
+                }
+                Some(Type::Channel(value_type.clone()))
+            }
+            Expression::BaungCreate { timeout_ms } => {
+                let timeout_ty = self.check_expression(timeout_ms, env)?;
+                if timeout_ty != Type::Kain {
+                    self.push_error(format!(
+                        "baung() timeout must be `kain`, got {:?}",
+                        timeout_ty
+                    ));
+                }
+                Some(Type::Baung)
             }
             Expression::HashLiteral { pairs } => {
                 if pairs.is_empty() { return None; }
@@ -718,6 +875,50 @@ impl TypeChecker {
             }
             Expression::MethodCall { object, method, arguments } => {
                 let obj_ty = self.check_expression(object, env)?;
+                if let Type::Channel(inner) = &obj_ty {
+                    match method.as_str() {
+                        "send" => {
+                            if arguments.len() != 1 {
+                                self.push_error("send() expects 1 argument".to_string());
+                                return None;
+                            }
+                            let arg_ty = self.check_expression(&arguments[0], env)?;
+                            if !self.is_assignable(inner, &arg_ty) {
+                                self.push_error(format!(
+                                    "send() type mismatch: expected `{:?}`, got `{:?}`",
+                                    inner, arg_ty
+                                ));
+                            }
+                            return Some(Type::Nil);
+                        }
+                        "recv" => {
+                            if !arguments.is_empty() {
+                                self.push_error("recv() expects no arguments".to_string());
+                                return None;
+                            }
+                            return Some((**inner).clone());
+                        }
+                        "close" => {
+                            if !arguments.is_empty() {
+                                self.push_error("close() expects no arguments".to_string());
+                                return None;
+                            }
+                            return Some(Type::Nil);
+                        }
+                        _ => {}
+                    }
+                }
+                if obj_ty == Type::Baung {
+                    match method.as_str() {
+                        "close" => {
+                            if !arguments.is_empty() {
+                                self.push_error("close() expects no arguments".to_string());
+                            }
+                            return Some(Type::Error);
+                        }
+                        _ => {}
+                    }
+                }
                 // Built-in string methods
                 if obj_ty == Type::Sar {
                     match method.as_str() {
@@ -738,6 +939,13 @@ impl TypeChecker {
                             }
                             self.check_expression(&arguments[0], env);
                             return Some(Type::Sit);
+                        }
+                        "ayaik" => {
+                            if !arguments.is_empty() {
+                                self.push_error("ayaik() expects no arguments".to_string());
+                                return None;
+                            }
+                            return Some(Type::Sar);
                         }
                         "ashay" => {
                             return Some(Type::Kain);
@@ -866,7 +1074,9 @@ impl TypeChecker {
                         },
                     );
                 }
+                self.callable_depth += 1;
                 self.check_block_statement(body, &mut closure_env, Some(return_type));
+                self.callable_depth = self.callable_depth.saturating_sub(1);
                 Some(Type::Function {
                     params: parameters.iter().map(|(_, ty, _)| ty.clone()).collect(),
                     return_type: Box::new(return_type.clone()),
@@ -1066,6 +1276,87 @@ mod tests {
     }
 
     #[test]
+    fn test_type_checker_phase3_channel_and_concurrency() {
+        let input = r#"
+            loke worker(laung<kain> ch) -> kain {
+                naut_sone ch.close();
+                ch.send(1);
+                pyan 0;
+            }
+
+            loke main() -> kain {
+                laung<kain> ch = laung<kain>(10);
+                kyoe worker(ch);
+                kain v = ch.recv();
+                pya(v);
+                pyan 0;
+            }
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+
+        let mut checker = TypeChecker::new();
+        let mut env = Environment::new();
+        checker.check_program(&program, &mut env);
+
+        assert!(checker.errors.is_empty(), "Type checker errors: {:?}", checker.errors);
+    }
+
+    #[test]
+    fn test_type_checker_phase3_channel_send_close_as_value_is_error() {
+        let input = r#"
+            loke main() -> kain {
+                laung<kain> ch = laung<kain>();
+                amhar bad_one = ch.send(1);
+                amhar bad_two = ch.close();
+                pyan 0;
+            }
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+
+        let mut checker = TypeChecker::new();
+        let mut env = Environment::new();
+        checker.check_program(&program, &mut env);
+
+        assert!(checker
+            .errors
+            .iter()
+            .any(|e| e.message.contains("can only be used as standalone statements")));
+    }
+
+    #[test]
+    fn test_type_checker_phase3_defer_outside_callable_is_error() {
+        let input = r#"
+            naut_sone do_cleanup();
+
+            loke do_cleanup() -> amhar {
+                pyan bhala;
+            }
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+
+        let mut checker = TypeChecker::new();
+        let mut env = Environment::new();
+        checker.check_program(&program, &mut env);
+
+        assert!(checker
+            .errors
+            .iter()
+            .any(|e| e.message.contains("only allowed inside function/method/closure")));
+    }
+
+    #[test]
     fn test_type_checker_stdlib_http_usage() {
         let input = r#"
             yu "kainn/http";
@@ -1097,7 +1388,91 @@ mod tests {
     }
 
     #[test]
-    fn test_type_checker_unknown_import_is_noop() {
+    fn test_type_checker_stdlib_http_server_usage() {
+        let input = r#"
+            yu "kainn/http";
+
+            loke handler(http.Request req, http.ResponseWriter w) -> amhar {
+                sar ua = req.header("User-Agent");
+                sar q = req.query("q");
+                amhar h_one = w.header("X-UA", ua);
+                amhar h_two = w.status(200);
+                amhar h_three = w.write(q);
+                amhar h_four = w.json({"ok": 1});
+                pya(h_one);
+                pya(h_two);
+                pya(h_three);
+                pya(h_four);
+                pyan bhala;
+            }
+
+            loke main() -> kain {
+                amhar reg_err = http.handle("/", handler);
+                amhar listen_err = http.listen(":8080");
+                pya(reg_err);
+                pya(listen_err);
+                pyan 0;
+            }
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+
+        let mut checker = TypeChecker::new();
+        let mut env = Environment::new();
+        checker.check_program(&program, &mut env);
+
+        assert!(checker.errors.is_empty(), "Type checker errors: {:?}", checker.errors);
+    }
+
+    #[test]
+    fn test_type_checker_stdlib_kainn_socket_usage() {
+        let input = r#"
+            yu "kainn";
+
+            loke main() -> kain {
+                kainn.TCPListener listener, amhar listen_err = kainn.tcp_listen(":9000");
+                kainn.TCPConn conn, amhar accept_err = listener.accept();
+                sar msg, amhar read_err = conn.read();
+                amhar write_err = conn.write(msg);
+                amhar close_conn_err = conn.close();
+                amhar close_listener_err = listener.close();
+
+                kainn.UDPConn udp, amhar udp_err = kainn.udp_bind(":9001");
+                sar data, sar from, amhar recv_err = udp.recv();
+                amhar send_err = udp.send_to(from, data);
+                amhar close_udp_err = udp.close();
+
+                pya(listen_err);
+                pya(accept_err);
+                pya(read_err);
+                pya(write_err);
+                pya(close_conn_err);
+                pya(close_listener_err);
+                pya(udp_err);
+                pya(recv_err);
+                pya(send_err);
+                pya(close_udp_err);
+                pyan 0;
+            }
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+
+        let mut checker = TypeChecker::new();
+        let mut env = Environment::new();
+        checker.check_program(&program, &mut env);
+
+        assert!(checker.errors.is_empty(), "Type checker errors: {:?}", checker.errors);
+    }
+
+    #[test]
+    fn test_type_checker_unknown_import_is_error() {
         let input = r#"
             yu unknown_module;
 
@@ -1120,7 +1495,7 @@ mod tests {
         assert!(
             checker.errors[0]
                 .message
-                .contains("Undeclared identifier `unknown_module`")
+                .contains("Unknown import")
         );
     }
 
@@ -1152,5 +1527,199 @@ mod tests {
                 .iter()
                 .any(|e| e.message.contains("Type mismatch in destructuring"))
         );
+    }
+
+    #[test]
+    fn test_type_checker_string_ayaik_method() {
+        let input = r#"
+            loke main() -> kain {
+                sar text = "HELLO";
+                sar lower = text.ayaik();
+                pya(lower);
+                pyan 0;
+            }
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+
+        let mut checker = TypeChecker::new();
+        let mut env = Environment::new();
+        checker.check_program(&program, &mut env);
+
+        assert!(checker.errors.is_empty(), "Type checker errors: {:?}", checker.errors);
+    }
+
+    #[test]
+    fn test_type_checker_stdlib_pone_set_in_ote_hmat_usage() {
+        let input = r#"
+            yu "pone_set";
+            yu "in_ote";
+            yu "hmat";
+
+            loke main() -> kain {
+                sar prompt = pone_set.pon_san("name: %s", "");
+                amhar out_err = in_ote.htote_yay(prompt);
+                sar line, amhar read_err = in_ote.twin_phat();
+                amhar info_err = hmat.mhat_chet(line);
+                amhar warn_err = hmat.mhat_thati(line);
+                amhar err_err = hmat.mhat_amhar(line);
+                pya(out_err);
+                pya(read_err);
+                pya(info_err);
+                pya(warn_err);
+                pya(err_err);
+                pyan 0;
+            }
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+
+        let mut checker = TypeChecker::new();
+        let mut env = Environment::new();
+        checker.check_program(&program, &mut env);
+
+        assert!(checker.errors.is_empty(), "Type checker errors: {:?}", checker.errors);
+    }
+
+    #[test]
+    fn test_type_checker_stdlib_pone_set_signature_errors() {
+        let input = r#"
+            yu "pone_set";
+
+            loke main() -> kain {
+                sar a = pone_set.pon_san("%s");
+                sar b = pone_set.pon_san("%s", 1);
+                pya(a);
+                pya(b);
+                pyan 0;
+            }
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+
+        let mut checker = TypeChecker::new();
+        let mut env = Environment::new();
+        checker.check_program(&program, &mut env);
+
+        assert!(checker.errors.iter().any(|e| {
+            e.message
+                .contains("Method `pon_san` expects 2 arguments, got 1")
+        }));
+        assert!(checker.errors.iter().any(|e| {
+            e.message
+                .contains("Method `pon_san` argument 1 expected `Sar`, got `Kain`")
+        }));
+    }
+
+    #[test]
+    fn test_type_checker_stdlib_in_ote_and_hmat_signature_errors() {
+        let input = r#"
+            yu "in_ote";
+            yu "hmat";
+
+            loke main() -> kain {
+                sar line, amhar read_err = in_ote.twin_phat("unexpected");
+                amhar write_err = in_ote.htote_yay(10);
+                amhar info_err = hmat.mhat_chet();
+                amhar warn_err = hmat.mhat_thati(123);
+                amhar err_err = hmat.mhat_amhar(1);
+                pya(line);
+                pya(read_err);
+                pya(write_err);
+                pya(info_err);
+                pya(warn_err);
+                pya(err_err);
+                pyan 0;
+            }
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+
+        let mut checker = TypeChecker::new();
+        let mut env = Environment::new();
+        checker.check_program(&program, &mut env);
+
+        assert!(checker.errors.iter().any(|e| {
+            e.message
+                .contains("Method `twin_phat` expects 0 arguments, got 1")
+        }));
+        assert!(checker.errors.iter().any(|e| {
+            e.message
+                .contains("Method `htote_yay` argument 0 expected `Sar`, got `Kain`")
+        }));
+        assert!(checker.errors.iter().any(|e| {
+            e.message
+                .contains("Method `mhat_chet` expects 1 arguments, got 0")
+        }));
+        assert!(checker.errors.iter().any(|e| {
+            e.message
+                .contains("Method `mhat_thati` argument 0 expected `Sar`, got `Kain`")
+        }));
+        assert!(checker.errors.iter().any(|e| {
+            e.message
+                .contains("Method `mhat_amhar` argument 0 expected `Sar`, got `Kain`")
+        }));
+    }
+
+    #[test]
+    fn test_type_checker_phase4_baung_usage() {
+        let input = r#"
+            loke main() -> kain {
+                baung ctx = baung(5000);
+                amhar close_err = ctx.close();
+                hlyin (close_err != bhala) {
+                    pya(close_err);
+                }
+                pyan 0;
+            }
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+
+        let mut checker = TypeChecker::new();
+        let mut env = Environment::new();
+        checker.check_program(&program, &mut env);
+
+        assert!(checker.errors.is_empty(), "Type checker errors: {:?}", checker.errors);
+    }
+
+    #[test]
+    fn test_type_checker_set_sae_body_checked_as_error_callable() {
+        let input = r#"
+            set_sae smoke_test {
+                baung ctx = baung(1000);
+                amhar close_err = ctx.close();
+                hlyin (close_err != bhala) {
+                    pyan close_err;
+                }
+                pyan bhala;
+            }
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+
+        let mut checker = TypeChecker::new();
+        let mut env = Environment::new();
+        checker.check_program(&program, &mut env);
+
+        assert!(checker.errors.is_empty(), "Type checker errors: {:?}", checker.errors);
     }
 }

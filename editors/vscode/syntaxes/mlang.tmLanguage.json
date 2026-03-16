@@ -67,7 +67,7 @@
             "patterns": [
                 {
                     "name": "keyword.control.mlang",
-                    "match": "\\b(hlyin|mo|pat|htae|pyan|yu|nee|myat)\\b"
+                    "match": "\\b(hlyin|mo|pat|htae|yut|shar|kyoe|naut_sone|set_sae|pyan|yu|nee|myat)\\b"
                 },
                 {
                     "name": "keyword.other.mlang",
@@ -77,7 +77,7 @@
         },
         "types": {
             "name": "storage.type.mlang",
-            "match": "\\b(kain|sar|sit|su|twe|da_tha|amhar)\\b"
+            "match": "\\b(kain|sar|sit|su|laung|baung|twe|da_tha|amhar)\\b"
         },
         "booleans": {
             "name": "constant.language.boolean.mlang",

@@ -16,26 +16,34 @@ import {
 let client: LanguageClient | undefined;
 const execFileAsync = promisify(execFile);
 
+function getWorkspaceBinaryCandidates(binaryName: string): string[] {
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  const roots = new Set<string>();
+
+  for (const folder of folders) {
+    roots.add(folder.uri.fsPath);
+    // Support monorepo layout where the Rust crate is nested under "mlang/".
+    roots.add(path.join(folder.uri.fsPath, "mlang"));
+  }
+
+  const candidates: string[] = [];
+  for (const root of roots) {
+    candidates.push(path.join(root, "target", "release", `${binaryName}.exe`));
+    candidates.push(path.join(root, "target", "release", binaryName));
+    candidates.push(path.join(root, "target", "debug", `${binaryName}.exe`));
+    candidates.push(path.join(root, "target", "debug", binaryName));
+  }
+
+  return candidates;
+}
+
 function resolveFormatterPath(config: vscode.WorkspaceConfiguration): string {
   const configured = config.get<string>("formatter.path", "").trim();
   if (configured) {
     return configured;
   }
 
-  const candidates = [
-    ...(vscode.workspace.workspaceFolders?.map((f) =>
-      path.join(f.uri.fsPath, "target", "release", "mlang.exe"),
-    ) ?? []),
-    ...(vscode.workspace.workspaceFolders?.map((f) =>
-      path.join(f.uri.fsPath, "target", "release", "mlang"),
-    ) ?? []),
-    ...(vscode.workspace.workspaceFolders?.map((f) =>
-      path.join(f.uri.fsPath, "target", "debug", "mlang.exe"),
-    ) ?? []),
-    ...(vscode.workspace.workspaceFolders?.map((f) =>
-      path.join(f.uri.fsPath, "target", "debug", "mlang"),
-    ) ?? []),
-  ];
+  const candidates = getWorkspaceBinaryCandidates("mlang");
 
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
@@ -86,21 +94,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   if (!serverPath) {
     // Try to find mlang-lsp relative to the workspace
-    const candidates = [
-      // Workspace-relative paths (common dev layout)
-      ...(vscode.workspace.workspaceFolders?.map((f) =>
-        path.join(f.uri.fsPath, "target", "release", "mlang-lsp.exe"),
-      ) ?? []),
-      ...(vscode.workspace.workspaceFolders?.map((f) =>
-        path.join(f.uri.fsPath, "target", "release", "mlang-lsp"),
-      ) ?? []),
-      ...(vscode.workspace.workspaceFolders?.map((f) =>
-        path.join(f.uri.fsPath, "target", "debug", "mlang-lsp.exe"),
-      ) ?? []),
-      ...(vscode.workspace.workspaceFolders?.map((f) =>
-        path.join(f.uri.fsPath, "target", "debug", "mlang-lsp"),
-      ) ?? []),
-    ];
+    const candidates = getWorkspaceBinaryCandidates("mlang-lsp");
 
     for (const candidate of candidates) {
       if (fs.existsSync(candidate)) {

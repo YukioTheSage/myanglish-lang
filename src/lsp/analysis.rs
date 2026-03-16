@@ -74,6 +74,7 @@ fn collect_symbols(program: &Program, _source: &str, symbols: &mut Vec<SymbolInf
 
 fn collect_statement_symbols(stmt: &Statement, symbols: &mut Vec<SymbolInfo>) {
     match stmt {
+        Statement::PackageDecl { .. } => {}
         Statement::Let { name, ty, name_span, .. } => {
             // Convert 1-based lexer lines to 0-based LSP lines
             symbols.push(SymbolInfo {
@@ -145,6 +146,7 @@ fn collect_statement_symbols(stmt: &Statement, symbols: &mut Vec<SymbolInfo>) {
             }
         }
         Statement::ForIn {
+            index,
             iterator,
             collection,
             body,
@@ -176,6 +178,50 @@ fn collect_statement_symbols(stmt: &Statement, symbols: &mut Vec<SymbolInfo>) {
                 parameters: vec![],
             });
 
+            if let Some(index_name) = index {
+                symbols.push(SymbolInfo {
+                    name: index_name.clone(),
+                    kind: SymbolKindInfo::Variable,
+                    ty: Some(Type::Kain),
+                    line: name_span.line.saturating_sub(1),
+                    column: name_span.column.saturating_sub(1),
+                    parameters: vec![],
+                });
+            }
+
+            for s in &body.statements {
+                collect_statement_symbols(s, symbols);
+            }
+        }
+        Statement::TestDecl {
+            name,
+            body,
+            name_span,
+        } => {
+            symbols.push(SymbolInfo {
+                name: name.clone(),
+                kind: SymbolKindInfo::Function,
+                ty: Some(Type::Error),
+                line: name_span.line.saturating_sub(1),
+                column: name_span.column.saturating_sub(1),
+                parameters: vec![],
+            });
+            for s in &body.statements {
+                collect_statement_symbols(s, symbols);
+            }
+        }
+        Statement::ForClassic {
+            init,
+            condition: _,
+            post,
+            body,
+        } => {
+            if let Some(init_stmt) = init {
+                collect_statement_symbols(init_stmt, symbols);
+            }
+            if let Some(post_stmt) = post {
+                collect_statement_symbols(post_stmt, symbols);
+            }
             for s in &body.statements {
                 collect_statement_symbols(s, symbols);
             }
@@ -224,6 +270,9 @@ fn collect_statement_symbols(stmt: &Statement, symbols: &mut Vec<SymbolInfo>) {
                 column: name_span.column.saturating_sub(1),
                 parameters: vec![],
             });
+        }
+        Statement::Export { statement, .. } => {
+            collect_statement_symbols(statement, symbols);
         }
         _ => {}
     }
@@ -302,8 +351,10 @@ pub fn format_type(ty: &Type) -> String {
         Type::Sar => "sar (string)".to_string(),
         Type::Sit => "sit (bool)".to_string(),
         Type::Array(inner) => format!("su<{}> (array)", format_type(inner)),
+        Type::Channel(inner) => format!("laung<{}> (channel)", format_type(inner)),
         Type::Map(k, v) => format!("twe<{}, {}> (map)", format_type(k), format_type(v)),
         Type::DaTha => "da_tha (float64)".to_string(),
+        Type::Baung => "baung (context)".to_string(),
         Type::Nil => "bhala (nil)".to_string(),
         Type::Error => "amhar (error)".to_string(),
         Type::Struct(name) => format!("pone {} (struct)", name),
@@ -311,6 +362,13 @@ pub fn format_type(ty: &Type) -> String {
         Type::Tuple(types) => {
             let ts: Vec<String> = types.iter().map(|t| format_type(t)).collect();
             format!("({}) (tuple)", ts.join(", "))
+        }
+        Type::Function {
+            params,
+            return_type,
+        } => {
+            let ps: Vec<String> = params.iter().map(format_type).collect();
+            format!("loke({}) -> {} (function)", ps.join(", "), format_type(return_type))
         }
     }
 }

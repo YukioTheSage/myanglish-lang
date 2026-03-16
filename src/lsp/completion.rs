@@ -18,6 +18,9 @@ fn keyword_completions() -> Vec<CompletionItem> {
             "Loop statement (while / for-in)",
             "pat (${1:condition}) {\n\t${2}\n}",
         ),
+        make_keyword("kyoe", "Spawn concurrent call", "kyoe ${1:fn_call}();"),
+        make_keyword("naut_sone", "Defer cleanup call", "naut_sone ${1:fn_call}();"),
+        make_keyword("set_sae", "Test declaration", "set_sae ${1:test_name} {\n\t${2:pyan bhala;}\n}"),
         make_keyword("htae", "For-in connector", "htae"),
         CompletionItem {
             label: "pat htae (for-in loop)".to_string(),
@@ -38,7 +41,11 @@ fn keyword_completions() -> Vec<CompletionItem> {
         make_keyword("pya", "Print statement", "pya(${1});"),
         make_keyword("phat", "Read input", "phat(\"${1:prompt}\")"),
         make_keyword("su", "Array type", "su<${1:kain}> ${2:name} = [${3}];"),
-        make_keyword("yu", "Import module", "yu ${1:module};"),
+        make_keyword("laung", "Channel type/make", "laung<${1:kain}> ${2:ch} = laung<${1:kain}>();"),
+        make_keyword("baung", "Context type/make", "baung ${1:ctx} = baung(${2:5000});"),
+        make_keyword("yu", "Import module", "yu \"${1:module}\";"),
+        make_keyword("atote", "Package declaration", "atote ${1:main};"),
+        make_keyword("pay", "Export declaration", "pay ${1:declaration}"),
         make_keyword(
             "twe",
             "HashMap type",

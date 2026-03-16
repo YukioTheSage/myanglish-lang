@@ -31,6 +31,7 @@ pub struct Parser<'a> {
     current_token: Token,
     peek_token: Token,
     pub errors: Vec<ParseError>,
+    block_depth: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -43,6 +44,7 @@ impl<'a> Parser<'a> {
             current_token,
             peek_token,
             errors: Vec::new(),
+            block_depth: 0,
         }
     }
 
@@ -68,12 +70,24 @@ impl<'a> Parser<'a> {
 
     fn parse_statement(&mut self) -> Option<Statement> {
         match self.current_token.kind {
-            TokenKind::Kain | TokenKind::Sar | TokenKind::Sit | TokenKind::DaTha | TokenKind::Su | TokenKind::Twe => self.parse_let_or_destructured(),
+            TokenKind::Atote => self.parse_package_statement(),
+            TokenKind::Pay => self.parse_export_statement(),
+            TokenKind::Kain
+            | TokenKind::Sar
+            | TokenKind::Sit
+            | TokenKind::DaTha
+            | TokenKind::Su
+            | TokenKind::Twe
+            | TokenKind::Laung
+            | TokenKind::Baung => self.parse_let_or_destructured(),
             TokenKind::Hlyin => self.parse_if_statement(),
             TokenKind::Pyan => self.parse_return_statement(),
             TokenKind::Pat => self.parse_pat_statement(),
             TokenKind::Break => self.parse_break_statement(),
             TokenKind::Continue => self.parse_continue_statement(),
+            TokenKind::Kyoe => self.parse_go_statement(),
+            TokenKind::NautSone => self.parse_defer_statement(),
+            TokenKind::SetSae => self.parse_test_declaration(),
             TokenKind::Phat => {
                 // Read statement might be an expression, but if it stands alone we process as expression statement
                 self.parse_expression_statement()
@@ -119,6 +133,8 @@ impl<'a> Parser<'a> {
             TokenKind::DaTha => Some(Type::DaTha),
             TokenKind::Amhar => Some(Type::Error),
             TokenKind::Su => self.parse_array_type(),
+            TokenKind::Laung => self.parse_channel_type(),
+            TokenKind::Baung => Some(Type::Baung),
             TokenKind::Twe => self.parse_map_type(),
             TokenKind::LParen => self.parse_tuple_type(),
             TokenKind::Loke => self.parse_function_type(),
@@ -219,6 +235,90 @@ impl<'a> Parser<'a> {
         Some(Type::Map(Box::new(key_type), Box::new(val_type)))
     }
 
+    fn parse_channel_type(&mut self) -> Option<Type> {
+        // Syntax: laung<kain>
+        if !self.expect_peek(TokenKind::LessThan) {
+            return None;
+        }
+        self.next_token();
+        let inner_type = self.parse_type()?;
+        if !self.expect_peek(TokenKind::GreaterThan) {
+            return None;
+        }
+        Some(Type::Channel(Box::new(inner_type)))
+    }
+
+    fn parse_package_statement(&mut self) -> Option<Statement> {
+        if self.block_depth > 0 {
+            self.errors.push(ParseError {
+                message: "`atote` is only allowed at top level".to_string(),
+                line: self.current_token.line,
+                column: self.current_token.column,
+            });
+            return None;
+        }
+
+        if !self.expect_peek_identifier() {
+            return None;
+        }
+
+        let name_span = Span {
+            line: self.current_token.line,
+            column: self.current_token.column,
+        };
+        let name = match &self.current_token.kind {
+            TokenKind::Identifier(n) => n.clone(),
+            _ => return None,
+        };
+
+        if self.peek_token.kind == TokenKind::Semicolon {
+            self.next_token();
+        }
+
+        Some(Statement::PackageDecl { name, name_span })
+    }
+
+    fn parse_export_statement(&mut self) -> Option<Statement> {
+        let name_span = Span {
+            line: self.current_token.line,
+            column: self.current_token.column,
+        };
+
+        if self.block_depth > 0 {
+            self.errors.push(ParseError {
+                message: "`pay` is only allowed at top level".to_string(),
+                line: self.current_token.line,
+                column: self.current_token.column,
+            });
+            return None;
+        }
+
+        self.next_token();
+        let inner = self.parse_statement()?;
+        let exportable = matches!(
+            inner,
+            Statement::Let { .. }
+                | Statement::FunctionDecl { .. }
+                | Statement::StructDecl { .. }
+                | Statement::MethodDecl { .. }
+                | Statement::InterfaceDecl { .. }
+        );
+
+        if !exportable {
+            self.errors.push(ParseError {
+                message: "`pay` can only export declarations".to_string(),
+                line: name_span.line,
+                column: name_span.column,
+            });
+            return None;
+        }
+
+        Some(Statement::Export {
+            statement: Box::new(inner),
+            name_span,
+        })
+    }
+
     fn parse_import_statement(&mut self) -> Option<Statement> {
         self.next_token();
 
@@ -236,6 +336,41 @@ impl<'a> Parser<'a> {
         }
 
         Some(Statement::Import { module, name_span })
+    }
+
+    fn parse_test_declaration(&mut self) -> Option<Statement> {
+        if self.block_depth > 0 {
+            self.errors.push(ParseError {
+                message: "`set_sae` is only allowed at top level".to_string(),
+                line: self.current_token.line,
+                column: self.current_token.column,
+            });
+            return None;
+        }
+
+        if !self.expect_peek_identifier() {
+            return None;
+        }
+
+        let name_span = Span {
+            line: self.current_token.line,
+            column: self.current_token.column,
+        };
+        let name = match &self.current_token.kind {
+            TokenKind::Identifier(n) => n.clone(),
+            _ => return None,
+        };
+
+        if !self.expect_peek(TokenKind::LBrace) {
+            return None;
+        }
+
+        let body = self.parse_block_statement();
+        Some(Statement::TestDecl {
+            name,
+            body,
+            name_span,
+        })
     }
 
     fn parse_let_or_destructured(&mut self) -> Option<Statement> {
@@ -485,6 +620,40 @@ impl<'a> Parser<'a> {
         Some(Statement::Continue)
     }
 
+    fn parse_go_statement(&mut self) -> Option<Statement> {
+        self.next_token();
+        let call = self.parse_expression(Precedence::Lowest)?;
+        if !matches!(call, Expression::FunctionCall { .. } | Expression::MethodCall { .. }) {
+            self.errors.push(ParseError {
+                message: "`kyoe` expects a function or method call".to_string(),
+                line: self.current_token.line,
+                column: self.current_token.column,
+            });
+            return None;
+        }
+        if self.peek_token.kind == TokenKind::Semicolon {
+            self.next_token();
+        }
+        Some(Statement::Go { call })
+    }
+
+    fn parse_defer_statement(&mut self) -> Option<Statement> {
+        self.next_token();
+        let call = self.parse_expression(Precedence::Lowest)?;
+        if !matches!(call, Expression::FunctionCall { .. } | Expression::MethodCall { .. }) {
+            self.errors.push(ParseError {
+                message: "`naut_sone` expects a function or method call".to_string(),
+                line: self.current_token.line,
+                column: self.current_token.column,
+            });
+            return None;
+        }
+        if self.peek_token.kind == TokenKind::Semicolon {
+            self.next_token();
+        }
+        Some(Statement::Defer { call })
+    }
+
     fn parse_print_statement(&mut self) -> Option<Statement> {
         if !self.expect_peek(TokenKind::LParen) {
             return None;
@@ -561,10 +730,17 @@ impl<'a> Parser<'a> {
         self.next_token(); // consume '('
         self.next_token(); // move to first token inside parentheses
 
+        if self.current_token.kind == TokenKind::Semicolon
+            || (matches!(self.current_token.kind, TokenKind::Identifier(_))
+                && self.peek_token.kind == TokenKind::Assign)
+        {
+            return self.parse_classic_for_statement();
+        }
+
         // For-in with index/typed variables:
         // pat (kain i, kain item) htae collection { ... }
         if self.token_can_start_type(&self.current_token.kind) && self.peek_is_identifier() {
-            let _first_ty = self.parse_type()?;
+            let first_ty = self.parse_type()?;
             if !self.expect_peek_identifier() {
                 return None;
             }
@@ -572,6 +748,24 @@ impl<'a> Parser<'a> {
                 TokenKind::Identifier(n) => n.clone(),
                 _ => return None,
             };
+            let first_name_span = Span {
+                line: self.current_token.line,
+                column: self.current_token.column,
+            };
+
+            if self.peek_token.kind == TokenKind::Assign {
+                self.next_token(); // '='
+                self.next_token(); // first token of init value
+                let init_value = self.parse_expression(Precedence::Lowest)?;
+                let init_stmt = Statement::Let {
+                    name: first_name,
+                    value: init_value,
+                    ty: first_ty,
+                    name_span: first_name_span,
+                };
+                return self.parse_classic_for_tail(Some(init_stmt));
+            }
+
             let mut name_span = Span {
                 line: self.current_token.line,
                 column: self.current_token.column,
@@ -681,6 +875,117 @@ impl<'a> Parser<'a> {
         Some(Statement::While { condition, body })
     }
 
+    fn parse_classic_for_statement(&mut self) -> Option<Statement> {
+        let init = if self.current_token.kind == TokenKind::Semicolon {
+            None
+        } else {
+            let stmt = self.parse_for_classic_component(true)?;
+            Some(stmt)
+        };
+
+        self.parse_classic_for_tail(init)
+    }
+
+    fn parse_classic_for_tail(&mut self, init: Option<Statement>) -> Option<Statement> {
+        if self.current_token.kind != TokenKind::Semicolon {
+            if !self.expect_peek(TokenKind::Semicolon) {
+                return None;
+            }
+        }
+
+        self.next_token(); // token after first ';'
+        let condition = if self.current_token.kind == TokenKind::Semicolon {
+            None
+        } else {
+            let cond = self.parse_expression(Precedence::Lowest)?;
+            Some(cond)
+        };
+
+        if self.current_token.kind != TokenKind::Semicolon {
+            if !self.expect_peek(TokenKind::Semicolon) {
+                return None;
+            }
+        }
+
+        self.next_token(); // token after second ';'
+        let post = if self.current_token.kind == TokenKind::RParen {
+            None
+        } else {
+            let stmt = self.parse_for_classic_component(false)?;
+            Some(Box::new(stmt))
+        };
+
+        if self.current_token.kind != TokenKind::RParen {
+            if !self.expect_peek(TokenKind::RParen) {
+                return None;
+            }
+        }
+
+        if !self.expect_peek(TokenKind::LBrace) {
+            return None;
+        }
+        let body = self.parse_block_statement();
+
+        Some(Statement::ForClassic {
+            init: init.map(Box::new),
+            condition,
+            post,
+            body,
+        })
+    }
+
+    fn parse_for_classic_component(&mut self, allow_typed_let: bool) -> Option<Statement> {
+        if allow_typed_let
+            && self.token_can_start_type(&self.current_token.kind)
+            && self.peek_is_identifier()
+        {
+            let ty = self.parse_type()?;
+            if !self.expect_peek_identifier() {
+                return None;
+            }
+            let name_span = Span {
+                line: self.current_token.line,
+                column: self.current_token.column,
+            };
+            let name = match &self.current_token.kind {
+                TokenKind::Identifier(n) => n.clone(),
+                _ => return None,
+            };
+            if !self.expect_peek(TokenKind::Assign) {
+                return None;
+            }
+            self.next_token();
+            let value = self.parse_expression(Precedence::Lowest)?;
+            return Some(Statement::Let {
+                name,
+                value,
+                ty,
+                name_span,
+            });
+        }
+
+        if let TokenKind::Identifier(name) = &self.current_token.kind {
+            if self.peek_token.kind == TokenKind::Assign {
+                let span = Span {
+                    line: self.current_token.line,
+                    column: self.current_token.column,
+                };
+                let name = name.clone();
+                self.next_token(); // '='
+                self.next_token(); // value start
+                let value = self.parse_expression(Precedence::Lowest)?;
+                return Some(Statement::Assign {
+                    name,
+                    value,
+                    name_span: span,
+                });
+            }
+        }
+
+        let expr = self.parse_expression(Precedence::Lowest)?;
+        Some(Statement::ExpressionStatement(expr))
+    }
+
     fn token_can_start_type(&self, kind: &TokenKind) -> bool {
         matches!(
             kind,
@@ -690,6 +995,8 @@ impl<'a> Parser<'a> {
                 | TokenKind::DaTha
                 | TokenKind::Amhar
                 | TokenKind::Su
+                | TokenKind::Laung
+                | TokenKind::Baung
                 | TokenKind::Twe
                 | TokenKind::Identifier(_)
                 | TokenKind::LParen
@@ -985,6 +1292,7 @@ impl<'a> Parser<'a> {
     fn parse_block_statement(&mut self) -> BlockStatement {
         let mut statements = Vec::new();
 
+        self.block_depth += 1;
         self.next_token();
 
         while self.current_token.kind != TokenKind::RBrace && self.current_token.kind != TokenKind::Eof {
@@ -994,6 +1302,7 @@ impl<'a> Parser<'a> {
             self.next_token();
         }
 
+        self.block_depth = self.block_depth.saturating_sub(1);
         BlockStatement { statements }
     }
 
@@ -1029,6 +1338,8 @@ impl<'a> Parser<'a> {
             TokenKind::Bhala => Some(Expression::NilLiteral),
             TokenKind::Amhar => self.parse_error_create(),
             TokenKind::Loke => self.parse_closure_literal(),
+            TokenKind::Laung => self.parse_channel_make(),
+            TokenKind::Baung => self.parse_baung_create(),
             // htae and ashay used as built-in function calls
             TokenKind::Htae => {
                 if self.peek_token.kind == TokenKind::LParen {
@@ -1365,6 +1676,55 @@ impl<'a> Parser<'a> {
         let prompt = self.parse_expression(Precedence::Lowest)?;
         if !self.expect_peek(TokenKind::RParen) { return None; }
         Some(Expression::ReadInput { prompt: Box::new(prompt) })
+    }
+
+    fn parse_channel_make(&mut self) -> Option<Expression> {
+        // Syntax:
+        //   laung<T>()
+        //   laung<T>(capacity)
+        if !self.expect_peek(TokenKind::LessThan) {
+            return None;
+        }
+        self.next_token();
+        let value_type = self.parse_type()?;
+        if !self.expect_peek(TokenKind::GreaterThan) {
+            return None;
+        }
+        if !self.expect_peek(TokenKind::LParen) {
+            return None;
+        }
+
+        let capacity = if self.peek_token.kind == TokenKind::RParen {
+            self.next_token();
+            None
+        } else {
+            self.next_token();
+            let expr = self.parse_expression(Precedence::Lowest)?;
+            if !self.expect_peek(TokenKind::RParen) {
+                return None;
+            }
+            Some(Box::new(expr))
+        };
+
+        Some(Expression::ChannelMake {
+            value_type: Box::new(value_type),
+            capacity,
+        })
+    }
+
+    fn parse_baung_create(&mut self) -> Option<Expression> {
+        // Syntax: baung(timeout_ms)
+        if !self.expect_peek(TokenKind::LParen) {
+            return None;
+        }
+        self.next_token();
+        let timeout_ms = self.parse_expression(Precedence::Lowest)?;
+        if !self.expect_peek(TokenKind::RParen) {
+            return None;
+        }
+        Some(Expression::BaungCreate {
+            timeout_ms: Box::new(timeout_ms),
+        })
     }
 
     fn parse_expression_list(&mut self, end: TokenKind) -> Option<Vec<Expression>> {
@@ -1788,5 +2148,162 @@ loke main() -> kain {
         let mut parser = Parser::new(&mut lexer);
         let _program = parser.parse_program().unwrap();
         assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+    }
+
+    #[test]
+    fn test_package_and_export_declarations() {
+        let input = r#"
+atote util;
+pay loke add(kain a, kain b) -> kain {
+    pyan a + b;
+}
+"#;
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(matches!(program.statements[0], Statement::PackageDecl { .. }));
+        assert!(matches!(program.statements[1], Statement::Export { .. }));
+    }
+
+    #[test]
+    fn test_classic_for_loop_statement() {
+        let input = r#"
+loke main() -> kain {
+    pat (kain i = 0; i < 10; i = i + 1) {
+        pya(i);
+    }
+    pyan 0;
+}
+"#;
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        let Statement::FunctionDecl { body, .. } = &program.statements[0] else {
+            panic!("Expected function declaration");
+        };
+        assert!(matches!(body.statements[0], Statement::ForClassic { .. }));
+    }
+
+    #[test]
+    fn test_phase3_channel_go_defer_parsing() {
+        let input = r#"
+        loke worker(laung<kain> ch) -> kain {
+            naut_sone ch.close();
+            ch.send(1);
+            pyan 0;
+        }
+
+        loke main() -> kain {
+            laung<kain> ch = laung<kain>(10);
+            kyoe worker(ch);
+            kain v = ch.recv();
+            pya(v);
+            pyan 0;
+        }
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+
+        let Statement::FunctionDecl { body, .. } = &program.statements[0] else {
+            panic!("Expected first function declaration");
+        };
+        assert!(matches!(body.statements[0], Statement::Defer { .. }));
+
+        let Statement::FunctionDecl { body, .. } = &program.statements[1] else {
+            panic!("Expected second function declaration");
+        };
+        assert!(matches!(body.statements[1], Statement::Go { .. }));
+    }
+
+    #[test]
+    fn test_phase3_go_defer_require_call() {
+        let input = r#"
+        loke main() -> kain {
+            kyoe 1;
+            naut_sone bhala;
+            pyan 0;
+        }
+        "#;
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let _program = parser.parse_program().unwrap();
+
+        assert!(!parser.errors.is_empty());
+        assert!(parser.errors.iter().any(|e| e.message.contains("expects a function or method call")));
+    }
+
+    #[test]
+    fn test_export_inside_block_is_error() {
+        let input = r#"
+loke main() -> kain {
+    pay kain x = 1;
+    pyan 0;
+}
+"#;
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let _program = parser.parse_program().unwrap();
+        assert!(!parser.errors.is_empty());
+        assert!(
+            parser
+                .errors
+                .iter()
+                .any(|e| e.message.contains("only allowed at top level"))
+        );
+    }
+
+    #[test]
+    fn test_phase4_baung_and_set_sae_parsing() {
+        let input = r#"
+set_sae timeout_guard {
+    baung ctx = baung(5000);
+    pyan bhala;
+}
+"#;
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program().unwrap();
+        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert_eq!(program.statements.len(), 1);
+        match &program.statements[0] {
+            Statement::TestDecl { name, body, .. } => {
+                assert_eq!(name, "timeout_guard");
+                assert!(matches!(
+                    body.statements[0],
+                    Statement::Let {
+                        ty: Type::Baung,
+                        ..
+                    }
+                ));
+            }
+            other => panic!("Expected TestDecl, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_sae_inside_block_is_error() {
+        let input = r#"
+loke main() -> kain {
+    set_sae bad {
+        pyan bhala;
+    }
+    pyan 0;
+}
+"#;
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let _program = parser.parse_program().unwrap();
+        assert!(
+            parser
+                .errors
+                .iter()
+                .any(|e| e.message.contains("`set_sae` is only allowed at top level"))
+        );
     }
 }
