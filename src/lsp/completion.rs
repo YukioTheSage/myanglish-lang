@@ -1,5 +1,5 @@
-use tower_lsp::lsp_types::*;
 use ropey::Rope;
+use tower_lsp::lsp_types::*;
 
 use super::analysis::{AnalysisResult, SymbolKindInfo, format_type};
 
@@ -11,7 +11,11 @@ fn keyword_completions() -> Vec<CompletionItem> {
         make_keyword("sit", "Boolean type (bool)", "sit ${1:name} = ${2:hman};"),
         make_keyword("hman", "Boolean true", "hman"),
         make_keyword("hmar", "Boolean false", "hmar"),
-        make_keyword("hlyin", "If statement", "hlyin (${1:condition}) {\n\t${2}\n}"),
+        make_keyword(
+            "hlyin",
+            "If statement",
+            "hlyin (${1:condition}) {\n\t${2}\n}",
+        ),
         make_keyword("mo", "Else clause", "mo {\n\t${1}\n}"),
         make_keyword(
             "pat",
@@ -19,8 +23,16 @@ fn keyword_completions() -> Vec<CompletionItem> {
             "pat (${1:condition}) {\n\t${2}\n}",
         ),
         make_keyword("kyoe", "Spawn concurrent call", "kyoe ${1:fn_call}();"),
-        make_keyword("naut_sone", "Defer cleanup call", "naut_sone ${1:fn_call}();"),
-        make_keyword("set_sae", "Test declaration", "set_sae ${1:test_name} {\n\t${2:pyan bhala;}\n}"),
+        make_keyword(
+            "naut_sone",
+            "Defer cleanup call",
+            "naut_sone ${1:fn_call}();",
+        ),
+        make_keyword(
+            "set_sae",
+            "Test declaration",
+            "set_sae ${1:test_name} {\n\t${2:pyan bhala;}\n}",
+        ),
         make_keyword("htae", "For-in connector", "htae"),
         CompletionItem {
             label: "pat htae (for-in loop)".to_string(),
@@ -41,8 +53,16 @@ fn keyword_completions() -> Vec<CompletionItem> {
         make_keyword("pya", "Print statement", "pya(${1});"),
         make_keyword("phat", "Read input", "phat(\"${1:prompt}\")"),
         make_keyword("su", "Array type", "su<${1:kain}> ${2:name} = [${3}];"),
-        make_keyword("laung", "Channel type/make", "laung<${1:kain}> ${2:ch} = laung<${1:kain}>();"),
-        make_keyword("baung", "Context type/make", "baung ${1:ctx} = baung(${2:5000});"),
+        make_keyword(
+            "laung",
+            "Channel type/make",
+            "laung<${1:kain}> ${2:ch} = laung<${1:kain}>();",
+        ),
+        make_keyword(
+            "baung",
+            "Context type/make",
+            "baung ${1:ctx} = baung(${2:5000});",
+        ),
         make_keyword("yu", "Import module", "yu \"${1:module}\";"),
         make_keyword("atote", "Package declaration", "atote ${1:main};"),
         make_keyword("pay", "Export declaration", "pay ${1:declaration}"),
@@ -56,9 +76,7 @@ fn keyword_completions() -> Vec<CompletionItem> {
             label: "main (main function)".to_string(),
             kind: Some(CompletionItemKind::SNIPPET),
             detail: Some("Main function template".to_string()),
-            insert_text: Some(
-                "loke main() -> kain {\n\t${1}\n\tpyan 0;\n}".to_string(),
-            ),
+            insert_text: Some("loke main() -> kain {\n\t${1}\n\tpyan 0;\n}".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             ..Default::default()
         },
@@ -93,7 +111,10 @@ pub fn get_completions(
                         .as_ref()
                         .map(|t| format_type(t))
                         .unwrap_or_else(|| "unknown".to_string());
-                    (CompletionItemKind::VARIABLE, format!("variable: {}", type_str))
+                    (
+                        CompletionItemKind::VARIABLE,
+                        format!("variable: {}", type_str),
+                    )
                 }
                 SymbolKindInfo::Function => {
                     let params: Vec<String> = sym
@@ -125,7 +146,10 @@ pub fn get_completions(
                         .iter()
                         .map(|(n, t)| format!("{} {}", format_type(t), n))
                         .collect();
-                    (CompletionItemKind::STRUCT, format!("struct {{ {} }}", fields.join(", ")))
+                    (
+                        CompletionItemKind::STRUCT,
+                        format!("struct {{ {} }}", fields.join(", ")),
+                    )
                 }
                 SymbolKindInfo::Method => {
                     let params: Vec<String> = sym
@@ -138,7 +162,10 @@ pub fn get_completions(
                         .as_ref()
                         .map(|t| format_type(t))
                         .unwrap_or_else(|| "unknown".to_string());
-                    (CompletionItemKind::METHOD, format!("method({}) -> {}", params.join(", "), ret))
+                    (
+                        CompletionItemKind::METHOD,
+                        format!("method({}) -> {}", params.join(", "), ret),
+                    )
                 }
                 SymbolKindInfo::Interface => {
                     (CompletionItemKind::INTERFACE, "interface".to_string())

@@ -2,8 +2,8 @@ use mlang::ast::{Program, Statement, Type};
 use mlang::lexer::Lexer;
 use mlang::parser::{ParseError, Parser};
 use mlang::typecheck::{Environment, TypeCheckError, TypeChecker};
-use tower_lsp::lsp_types::*;
 use ropey::Rope;
+use tower_lsp::lsp_types::*;
 
 /// Represents a symbol found during analysis (variable, function, etc.)
 #[derive(Debug, Clone)]
@@ -12,7 +12,7 @@ pub struct SymbolInfo {
     pub kind: SymbolKindInfo,
     pub ty: Option<Type>,
     pub line: usize,   // 0-based
-    pub column: usize,  // 0-based
+    pub column: usize, // 0-based
     pub parameters: Vec<(String, Type)>,
 }
 
@@ -75,7 +75,12 @@ fn collect_symbols(program: &Program, _source: &str, symbols: &mut Vec<SymbolInf
 fn collect_statement_symbols(stmt: &Statement, symbols: &mut Vec<SymbolInfo>) {
     match stmt {
         Statement::PackageDecl { .. } => {}
-        Statement::Let { name, ty, name_span, .. } => {
+        Statement::Let {
+            name,
+            ty,
+            name_span,
+            ..
+        } => {
             // Convert 1-based lexer lines to 0-based LSP lines
             symbols.push(SymbolInfo {
                 name: name.clone(),
@@ -99,7 +104,10 @@ fn collect_statement_symbols(stmt: &Statement, symbols: &mut Vec<SymbolInfo>) {
                 ty: Some(return_type.clone()),
                 line: name_span.line.saturating_sub(1),
                 column: name_span.column.saturating_sub(1),
-                parameters: parameters.iter().map(|(n, t, _)| (n.clone(), t.clone())).collect(),
+                parameters: parameters
+                    .iter()
+                    .map(|(n, t, _)| (n.clone(), t.clone()))
+                    .collect(),
             });
 
             // Parameters as symbols
@@ -238,7 +246,11 @@ fn collect_statement_symbols(stmt: &Statement, symbols: &mut Vec<SymbolInfo>) {
                 });
             }
         }
-        Statement::StructDecl { name, fields, name_span } => {
+        Statement::StructDecl {
+            name,
+            fields,
+            name_span,
+        } => {
             symbols.push(SymbolInfo {
                 name: name.clone(),
                 kind: SymbolKindInfo::Struct,
@@ -248,20 +260,33 @@ fn collect_statement_symbols(stmt: &Statement, symbols: &mut Vec<SymbolInfo>) {
                 parameters: fields.clone(),
             });
         }
-        Statement::MethodDecl { receiver_type, name, parameters, return_type, body, name_span, .. } => {
+        Statement::MethodDecl {
+            receiver_type,
+            name,
+            parameters,
+            return_type,
+            body,
+            name_span,
+            ..
+        } => {
             symbols.push(SymbolInfo {
                 name: format!("{}.{}", receiver_type, name),
                 kind: SymbolKindInfo::Method,
                 ty: Some(return_type.clone()),
                 line: name_span.line.saturating_sub(1),
                 column: name_span.column.saturating_sub(1),
-                parameters: parameters.iter().map(|(n, t, _)| (n.clone(), t.clone())).collect(),
+                parameters: parameters
+                    .iter()
+                    .map(|(n, t, _)| (n.clone(), t.clone()))
+                    .collect(),
             });
             for s in &body.statements {
                 collect_statement_symbols(s, symbols);
             }
         }
-        Statement::InterfaceDecl { name, name_span, .. } => {
+        Statement::InterfaceDecl {
+            name, name_span, ..
+        } => {
             symbols.push(SymbolInfo {
                 name: name.clone(),
                 kind: SymbolKindInfo::Interface,
@@ -325,7 +350,8 @@ pub fn get_word_at_position(rope: &Rope, pos: Position) -> Option<String> {
         return None;
     }
 
-    let is_ident_char = |c: char| c.is_alphanumeric() || c == '_' || ('\u{1000}' <= c && c <= '\u{109F}');
+    let is_ident_char =
+        |c: char| c.is_alphanumeric() || c == '_' || ('\u{1000}' <= c && c <= '\u{109F}');
 
     if !is_ident_char(chars[col]) {
         return None;
@@ -368,7 +394,11 @@ pub fn format_type(ty: &Type) -> String {
             return_type,
         } => {
             let ps: Vec<String> = params.iter().map(format_type).collect();
-            format!("loke({}) -> {} (function)", ps.join(", "), format_type(return_type))
+            format!(
+                "loke({}) -> {} (function)",
+                ps.join(", "),
+                format_type(return_type)
+            )
         }
     }
 }

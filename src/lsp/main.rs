@@ -1,9 +1,9 @@
-use tower_lsp::jsonrpc::Result;
-use tower_lsp::lsp_types::*;
-use tower_lsp::{Client, LanguageServer, LspService, Server};
 use dashmap::DashMap;
 use ropey::Rope;
 use std::sync::Arc;
+use tower_lsp::jsonrpc::Result;
+use tower_lsp::lsp_types::*;
+use tower_lsp::{Client, LanguageServer, LspService, Server};
 
 use mlang::formatter;
 
@@ -140,9 +140,7 @@ impl LanguageServer for MlangBackend {
         let uri = params.text_document.uri;
         self.documents.remove(&uri);
         self.analysis_cache.remove(&uri);
-        self.client
-            .publish_diagnostics(uri, vec![], None)
-            .await;
+        self.client.publish_diagnostics(uri, vec![], None).await;
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
@@ -164,11 +162,9 @@ impl LanguageServer for MlangBackend {
         let rope = self.documents.get(uri).map(|r| r.clone());
         let analysis = self.analysis_cache.get(uri).map(|a| a.clone());
 
-        Ok(Some(CompletionResponse::Array(completion::get_completions(
-            rope.as_ref(),
-            pos,
-            analysis.as_deref(),
-        ))))
+        Ok(Some(CompletionResponse::Array(
+            completion::get_completions(rope.as_ref(), pos, analysis.as_deref()),
+        )))
     }
 
     async fn goto_definition(
@@ -192,10 +188,7 @@ impl LanguageServer for MlangBackend {
         }
     }
 
-    async fn formatting(
-        &self,
-        params: DocumentFormattingParams,
-    ) -> Result<Option<Vec<TextEdit>>> {
+    async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let uri = &params.text_document.uri;
         let Some(rope) = self.documents.get(uri).map(|r| r.clone()) else {
             return Ok(None);
@@ -208,9 +201,7 @@ impl LanguageServer for MlangBackend {
                     return Ok(Some(vec![]));
                 }
                 let last_line = rope.len_lines().saturating_sub(1) as u32;
-                let last_char = rope
-                    .line(last_line as usize)
-                    .len_chars() as u32;
+                let last_char = rope.line(last_line as usize).len_chars() as u32;
                 let full_range = Range {
                     start: Position::new(0, 0),
                     end: Position::new(last_line, last_char),

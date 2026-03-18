@@ -1,5 +1,5 @@
 use crate::ast::{BlockStatement, Expression, IfAlternative, Program, Statement, Type};
-use crate::lexer::{tokenize_all, Lexer};
+use crate::lexer::{Lexer, tokenize_all};
 use crate::parser::Parser;
 use crate::token::TokenKind;
 
@@ -129,11 +129,7 @@ fn to_myanmar_numeral(n: i64) -> String {
 }
 
 /// Format the entire program.
-fn format_program(
-    program: &Program,
-    comments: &[CommentInfo],
-    numbers: &[NumberInfo],
-) -> String {
+fn format_program(program: &Program, comments: &[CommentInfo], numbers: &[NumberInfo]) -> String {
     let mut ctx = FormatContext {
         numbers,
         number_index: 0,
@@ -151,8 +147,7 @@ fn format_program(
     for (i, stmt) in program.statements.iter().enumerate() {
         if i > 0 {
             let prev = &program.statements[i - 1];
-            if statement_is_block_like(prev) || statement_is_block_like(stmt)
-            {
+            if statement_is_block_like(prev) || statement_is_block_like(stmt) {
                 output.push('\n');
             }
         }
@@ -309,15 +304,18 @@ fn format_statement(stmt: &Statement, indent: usize, ctx: &mut FormatContext) ->
         Statement::PackageDecl { name, .. } => {
             format!("{}atote {};", ind, name)
         }
-        Statement::Let { name, value, ty, .. } => {
+        Statement::Let {
+            name, value, ty, ..
+        } => {
             let ty_str = format_type(ty);
             let val_str = format_expression(value, indent, ctx);
             format!("{}{} {} = {};", ind, ty_str, name, val_str)
         }
         Statement::LetDestructured { names, value } => {
-            let parts: Vec<String> = names.iter().map(|(n, t, _)| {
-                format!("{} {}", format_type(t), n)
-            }).collect();
+            let parts: Vec<String> = names
+                .iter()
+                .map(|(n, t, _)| format!("{} {}", format_type(t), n))
+                .collect();
             let val_str = format_expression(value, indent, ctx);
             format!("{}{} = {};", ind, parts.join(", "), val_str)
         }
@@ -395,7 +393,10 @@ fn format_statement(stmt: &Statement, indent: usize, ctx: &mut FormatContext) ->
         } => {
             let collection_str = format_expression(collection, indent, ctx);
             let header = if let Some(idx) = index {
-                format!("{}pat ({}, {}) htae {} {{\n", ind, idx, iterator, collection_str)
+                format!(
+                    "{}pat ({}, {}) htae {} {{\n",
+                    ind, idx, iterator, collection_str
+                )
             } else {
                 format!("{}pat {} htae {} {{\n", ind, iterator, collection_str)
             };
@@ -441,11 +442,7 @@ fn format_statement(stmt: &Statement, indent: usize, ctx: &mut FormatContext) ->
             result.push_str(&format!("{}}}", ind));
             result
         }
-        Statement::TestDecl {
-            name,
-            body,
-            ..
-        } => {
+        Statement::TestDecl { name, body, .. } => {
             let mut result = format!("{}set_sae {} {{\n", ind, name);
             result.push_str(&format_block(body, indent + 1, ctx));
             result.push_str(&format!("{}}}", ind));
@@ -453,7 +450,10 @@ fn format_statement(stmt: &Statement, indent: usize, ctx: &mut FormatContext) ->
         }
         Statement::Return { value } => {
             if let Expression::TupleLiteral { elements } = value {
-                let vals: Vec<String> = elements.iter().map(|e| format_expression(e, indent, ctx)).collect();
+                let vals: Vec<String> = elements
+                    .iter()
+                    .map(|e| format_expression(e, indent, ctx))
+                    .collect();
                 format!("{}pyan ({});", ind, vals.join(", "))
             } else {
                 let val_str = format_expression(value, indent, ctx);
@@ -474,7 +474,12 @@ fn format_statement(stmt: &Statement, indent: usize, ctx: &mut FormatContext) ->
         Statement::StructDecl { name, fields, .. } => {
             let mut result = format!("{}pone {} {{\n", ind, name);
             for (fname, ftype) in fields {
-                result.push_str(&format!("{}{} {};\n", indent_str(indent + 1), format_type(ftype), fname));
+                result.push_str(&format!(
+                    "{}{} {};\n",
+                    indent_str(indent + 1),
+                    format_type(ftype),
+                    fname
+                ));
             }
             result.push_str(&format!("{}}}", ind));
             result
@@ -490,7 +495,10 @@ fn format_statement(stmt: &Statement, indent: usize, ctx: &mut FormatContext) ->
         } => {
             let params = format_function_params(parameters, indent);
             let ret = format_type(return_type);
-            let mut result = format!("{}nee ({} {}) {}{} -> {} {{\n", ind, receiver_type, receiver_name, name, params, ret);
+            let mut result = format!(
+                "{}nee ({} {}) {}{} -> {} {{\n",
+                ind, receiver_type, receiver_name, name, params, ret
+            );
             result.push_str(&format_block(body, indent + 1, ctx));
             result.push_str(&format!("{}}}", ind));
             result
@@ -498,10 +506,12 @@ fn format_statement(stmt: &Statement, indent: usize, ctx: &mut FormatContext) ->
         Statement::InterfaceDecl { name, methods, .. } => {
             let mut result = format!("{}myat {} {{\n", ind, name);
             for (mname, params, ret_type) in methods {
-                let param_strs: Vec<String> = params.iter().map(|(pname, ptype)| {
-                    format!("{} {}", format_type(ptype), pname)
-                }).collect();
-                result.push_str(&format!("{}loke {}({}) -> {};\n",
+                let param_strs: Vec<String> = params
+                    .iter()
+                    .map(|(pname, ptype)| format!("{} {}", format_type(ptype), pname))
+                    .collect();
+                result.push_str(&format!(
+                    "{}loke {}({}) -> {};\n",
                     indent_str(indent + 1),
                     mname,
                     param_strs.join(", "),
@@ -553,9 +563,15 @@ fn format_elif(stmt: &Statement, indent: usize, ctx: &mut FormatContext) -> Stri
     }
 }
 
-fn format_for_classic_component(stmt: &Statement, indent: usize, ctx: &mut FormatContext) -> String {
+fn format_for_classic_component(
+    stmt: &Statement,
+    indent: usize,
+    ctx: &mut FormatContext,
+) -> String {
     match stmt {
-        Statement::Let { name, value, ty, .. } => format!(
+        Statement::Let {
+            name, value, ty, ..
+        } => format!(
             "{} {} = {}",
             format_type(ty),
             name,
@@ -658,17 +674,33 @@ fn format_expression(expr: &Expression, indent: usize, ctx: &mut FormatContext) 
         Expression::NilLiteral => "bhala".to_string(),
         Expression::SliceExpression { left, low, high } => {
             let obj = format_expression(left, indent, ctx);
-            let l = low.as_ref().map(|e| format_expression(e, indent, ctx)).unwrap_or_default();
-            let h = high.as_ref().map(|e| format_expression(e, indent, ctx)).unwrap_or_default();
+            let l = low
+                .as_ref()
+                .map(|e| format_expression(e, indent, ctx))
+                .unwrap_or_default();
+            let h = high
+                .as_ref()
+                .map(|e| format_expression(e, indent, ctx))
+                .unwrap_or_default();
             format!("{}[{}:{}]", obj, l, h)
         }
-        Expression::TypeConversion { target_type, argument } => {
+        Expression::TypeConversion {
+            target_type,
+            argument,
+        } => {
             let arg = format_expression(argument, indent, ctx);
             format!("pyaung_{}({})", format_type(&target_type), arg)
         }
-        Expression::MethodCall { object, method, arguments } => {
+        Expression::MethodCall {
+            object,
+            method,
+            arguments,
+        } => {
             let obj = format_expression(object, indent, ctx);
-            let args: Vec<String> = arguments.iter().map(|a| format_expression(a, indent, ctx)).collect();
+            let args: Vec<String> = arguments
+                .iter()
+                .map(|a| format_expression(a, indent, ctx))
+                .collect();
             format!("{}.{}({})", obj, method, args.join(", "))
         }
         Expression::FieldAccess { object, field } => {
@@ -676,9 +708,10 @@ fn format_expression(expr: &Expression, indent: usize, ctx: &mut FormatContext) 
             format!("{}.{}", obj, field)
         }
         Expression::StructLiteral { name, fields } => {
-            let fs: Vec<String> = fields.iter().map(|(fname, fval)| {
-                format!("{}: {}", fname, format_expression(fval, indent, ctx))
-            }).collect();
+            let fs: Vec<String> = fields
+                .iter()
+                .map(|(fname, fval)| format!("{}: {}", fname, format_expression(fval, indent, ctx)))
+                .collect();
             format!("{} {{ {} }}", name, fs.join(", "))
         }
         Expression::ClosureLiteral {
@@ -701,7 +734,10 @@ fn format_expression(expr: &Expression, indent: usize, ctx: &mut FormatContext) 
             format!("amhar({})", msg)
         }
         Expression::TupleLiteral { elements } => {
-            let vals: Vec<String> = elements.iter().map(|e| format_expression(e, indent, ctx)).collect();
+            let vals: Vec<String> = elements
+                .iter()
+                .map(|e| format_expression(e, indent, ctx))
+                .collect();
             format!("({})", vals.join(", "))
         }
         Expression::ChannelMake {

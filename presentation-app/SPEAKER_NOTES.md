@@ -77,17 +77,18 @@ M-Lang is a statically typed programming language with Myanglish keywords, imple
 ## Slide 9 - Document Review Sources
 
 - Main point: satisfy the academic requirement for sources and show that the review is grounded in official references.
-- Say: "These are the main references used for the document review section: the official Go language specification, A Tour of Go, the Go documentation site, and Effective Go."
+- Say: "These are the main references used for the document review section: the official Go language specification, A Tour of Go, the Go documentation site, Effective Go, and the public Myanglish Lang repository used for implementation reference."
 - External links to mention:
 - `https://go.dev/ref/spec`
 - `https://go.dev/tour/`
 - `https://go.dev/doc`
 - `https://go.dev/doc/effective_go`
+- `https://github.com/YukioTheSage/myanglish-lang`
 - Internal design sources to mention:
 - `README.md`
 - `docs/ARCHITECTURE.md`
 - `docs/CHEATSHEET.md`
-- If asked why repo docs are listed too: "Because the presentation includes both literature review and the implemented target-language design."
+- If asked why repo docs are listed too: "Because the presentation includes both literature review and the implemented target-language design, and the GitHub repository shows the public implementation context."
 
 ## Slide 10 - Motivation & Problem Statement
 

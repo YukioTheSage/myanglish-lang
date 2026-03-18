@@ -25,27 +25,36 @@ impl CodeGenerator {
         self.output.push_str("#include <stdbool.h>\n");
         self.output.push_str("#include <string.h>\n");
         self.output.push_str("#include <stdlib.h>\n\n");
-        
-        self.output.push_str("char* mlang_concat(const char* s1, const char* s2) {\n");
-        self.output.push_str("    char* result = malloc(strlen(s1) + strlen(s2) + 1);\n");
+
+        self.output
+            .push_str("char* mlang_concat(const char* s1, const char* s2) {\n");
+        self.output
+            .push_str("    char* result = malloc(strlen(s1) + strlen(s2) + 1);\n");
         self.output.push_str("    strcpy(result, s1);\n");
         self.output.push_str("    strcat(result, s2);\n");
         self.output.push_str("    return result;\n");
         self.output.push_str("}\n\n");
-        
-        self.output.push_str("char* mlang_read_input(const char* prompt) {\n");
-        self.output.push_str("    if (prompt && strlen(prompt) > 0) {\n");
+
+        self.output
+            .push_str("char* mlang_read_input(const char* prompt) {\n");
+        self.output
+            .push_str("    if (prompt && strlen(prompt) > 0) {\n");
         self.output.push_str("        printf(\"%s\", prompt);\n");
         self.output.push_str("    }\n");
         self.output.push_str("    char buffer[1024];\n");
-        self.output.push_str("    if (fgets(buffer, sizeof(buffer), stdin) != NULL) {\n");
-        self.output.push_str("        size_t len = strlen(buffer);\n");
-        self.output.push_str("        if (len > 0 && buffer[len-1] == '\\n') buffer[len-1] = '\\0';\n");
-        self.output.push_str("        char* result = malloc(strlen(buffer) + 1);\n");
+        self.output
+            .push_str("    if (fgets(buffer, sizeof(buffer), stdin) != NULL) {\n");
+        self.output
+            .push_str("        size_t len = strlen(buffer);\n");
+        self.output
+            .push_str("        if (len > 0 && buffer[len-1] == '\\n') buffer[len-1] = '\\0';\n");
+        self.output
+            .push_str("        char* result = malloc(strlen(buffer) + 1);\n");
         self.output.push_str("        strcpy(result, buffer);\n");
         self.output.push_str("        return result;\n");
         self.output.push_str("    }\n");
-        self.output.push_str("    char* empty = malloc(1); empty[0] = '\\0'; return empty;\n");
+        self.output
+            .push_str("    char* empty = malloc(1); empty[0] = '\\0'; return empty;\n");
         self.output.push_str("}\n\n");
 
         for stmt in &program.statements {
@@ -57,11 +66,14 @@ impl CodeGenerator {
 
     fn generate_statement(&mut self, stmt: &Statement) {
         match stmt {
-            Statement::Let { name, value, ty, .. } => {
+            Statement::Let {
+                name, value, ty, ..
+            } => {
                 self.environment.insert(name.clone(), ty.clone());
                 self.indent();
                 self.generate_type(ty);
-                self.output.push_str(&format!(" {} = ", self.clean_identifier(name)));
+                self.output
+                    .push_str(&format!(" {} = ", self.clean_identifier(name)));
                 self.generate_expression(value);
                 self.output.push_str(";\n");
 
@@ -69,13 +81,18 @@ impl CodeGenerator {
                     if let Some(length) = self.infer_array_length(value) {
                         self.array_lengths.insert(name.clone(), length);
                         self.indent();
-                        self.output.push_str(&format!("long long {}_len = {};\n", self.clean_identifier(name), length));
+                        self.output.push_str(&format!(
+                            "long long {}_len = {};\n",
+                            self.clean_identifier(name),
+                            length
+                        ));
                     }
                 }
             }
             Statement::Assign { name, value, .. } => {
                 self.indent();
-                self.output.push_str(&format!("{} = ", self.clean_identifier(name)));
+                self.output
+                    .push_str(&format!("{} = ", self.clean_identifier(name)));
                 self.generate_expression(value);
                 self.output.push_str(";\n");
 
@@ -83,11 +100,21 @@ impl CodeGenerator {
                     if let Some(length) = self.infer_array_length(value) {
                         self.array_lengths.insert(name.clone(), length);
                         self.indent();
-                        self.output.push_str(&format!("{}_len = {};\n", self.clean_identifier(name), length));
+                        self.output.push_str(&format!(
+                            "{}_len = {};\n",
+                            self.clean_identifier(name),
+                            length
+                        ));
                     }
                 }
             }
-            Statement::FunctionDecl { name, parameters, return_type, body, .. } => {
+            Statement::FunctionDecl {
+                name,
+                parameters,
+                return_type,
+                body,
+                ..
+            } => {
                 self.indent();
                 let c_name = if name == "main" {
                     "main".to_string()
@@ -104,12 +131,13 @@ impl CodeGenerator {
 
                 for (i, (p_name, p_type, _)) in parameters.iter().enumerate() {
                     self.generate_type(p_type);
-                    self.output.push_str(&format!(" {}", self.clean_identifier(p_name)));
+                    self.output
+                        .push_str(&format!(" {}", self.clean_identifier(p_name)));
                     if i < parameters.len() - 1 {
                         self.output.push_str(", ");
                     }
                 }
-                
+
                 self.output.push_str(") ");
                 self.generate_block(body);
                 self.output.push_str("\n");
@@ -123,15 +151,19 @@ impl CodeGenerator {
             Statement::Print { value } => {
                 self.indent();
                 self.output.push_str("printf(");
-                
+
                 crate::ast::Expression::dummy_print_format(&mut self.output, value); // Internal helper logic
                 self.generate_print_format(value);
-                
+
                 self.output.push_str(", ");
                 self.generate_expression(value);
                 self.output.push_str(");\n");
             }
-            Statement::If { condition, consequence, alternative } => {
+            Statement::If {
+                condition,
+                consequence,
+                alternative,
+            } => {
                 self.indent();
                 self.output.push_str("if (");
                 self.generate_expression(condition);
@@ -160,12 +192,18 @@ impl CodeGenerator {
                 self.generate_block(body);
                 self.output.push_str("\n");
             }
-            Statement::ForIn { iterator, collection, body, .. } => {
+            Statement::ForIn {
+                iterator,
+                collection,
+                body,
+                ..
+            } => {
                 let item_type = match self.infer_expression_type(collection) {
                     Some(Type::Array(inner)) => *inner,
                     _ => {
                         self.indent();
-                        self.output.push_str("/* Unsupported for-in collection type */\n");
+                        self.output
+                            .push_str("/* Unsupported for-in collection type */\n");
                         return;
                     }
                 };
@@ -174,7 +212,8 @@ impl CodeGenerator {
                     Expression::Identifier(name) => {
                         let Some(array_len) = self.array_lengths.get(name).copied() else {
                             self.indent();
-                            self.output.push_str("/* Cannot iterate: array length unknown */\n");
+                            self.output
+                                .push_str("/* Cannot iterate: array length unknown */\n");
                             return;
                         };
                         (self.clean_identifier(name), array_len)
@@ -197,7 +236,8 @@ impl CodeGenerator {
                     }
                     _ => {
                         self.indent();
-                        self.output.push_str("/* Unsupported for-in collection expression */\n");
+                        self.output
+                            .push_str("/* Unsupported for-in collection expression */\n");
                         return;
                     }
                 };
@@ -208,13 +248,21 @@ impl CodeGenerator {
                 self.environment.insert(iterator.clone(), item_type.clone());
 
                 self.indent();
-                self.output.push_str(&format!("for (long long {} = 0; {} < {}; {}++) ", idx_name, idx_name, array_len, idx_name));
+                self.output.push_str(&format!(
+                    "for (long long {} = 0; {} < {}; {}++) ",
+                    idx_name, idx_name, array_len, idx_name
+                ));
                 self.output.push_str("{\n");
                 self.indent_level += 1;
 
                 self.indent();
                 self.generate_type(&item_type);
-                self.output.push_str(&format!(" {} = {}[{}];\n", self.clean_identifier(iterator), collection_c_expr, idx_name));
+                self.output.push_str(&format!(
+                    " {} = {}[{}];\n",
+                    self.clean_identifier(iterator),
+                    collection_c_expr,
+                    idx_name
+                ));
 
                 for stmt in &body.statements {
                     self.generate_statement(stmt);
@@ -231,7 +279,8 @@ impl CodeGenerator {
             }
             Statement::Import { module, .. } => {
                 let clean_mod = module.replace("\"", ""); // If module was parsed as string
-                self.output.push_str(&format!("#include \"{}.c\"\n", clean_mod));
+                self.output
+                    .push_str(&format!("#include \"{}.c\"\n", clean_mod));
             }
             _ => {} // C backend: new statement types not supported
         }
@@ -240,7 +289,11 @@ impl CodeGenerator {
     fn generate_elif_statement(&mut self, stmt: &Statement) {
         // Generate elif as "if (...) { ... } else ..." without leading indent
         match stmt {
-            Statement::If { condition, consequence, alternative } => {
+            Statement::If {
+                condition,
+                consequence,
+                alternative,
+            } => {
                 self.output.push_str("if (");
                 self.generate_expression(condition);
                 self.output.push_str(") ");
@@ -278,9 +331,15 @@ impl CodeGenerator {
         match expr {
             Expression::IntegerLiteral(val) => self.output.push_str(&val.to_string()),
             Expression::StringLiteral(val) => self.output.push_str(&format!("\"{}\"", val)),
-            Expression::BooleanLiteral(val) => self.output.push_str(if *val { "true" } else { "false" }),
+            Expression::BooleanLiteral(val) => {
+                self.output.push_str(if *val { "true" } else { "false" })
+            }
             Expression::Identifier(name) => self.output.push_str(&self.clean_identifier(name)),
-            Expression::Binary { left, operator, right } => {
+            Expression::Binary {
+                left,
+                operator,
+                right,
+            } => {
                 if operator == "+" && self.is_string_expression(left) {
                     self.output.push_str("mlang_concat(");
                     self.generate_expression(left);
@@ -295,8 +354,12 @@ impl CodeGenerator {
                     self.output.push_str(")");
                 }
             }
-            Expression::FunctionCall { function, arguments } => {
-                self.output.push_str(&format!("{}(", self.clean_identifier(function)));
+            Expression::FunctionCall {
+                function,
+                arguments,
+            } => {
+                self.output
+                    .push_str(&format!("{}(", self.clean_identifier(function)));
                 for (i, arg) in arguments.iter().enumerate() {
                     self.generate_expression(arg);
                     if i < arguments.len() - 1 {
@@ -311,7 +374,7 @@ impl CodeGenerator {
                 } else {
                     self.guess_c_type(&elements[0])
                 };
-                
+
                 self.output.push_str(&format!("({}[]){{", c_type));
                 for (i, expr) in elements.iter().enumerate() {
                     self.generate_expression(expr);
@@ -322,7 +385,8 @@ impl CodeGenerator {
                 self.output.push_str("}");
             }
             Expression::HashLiteral { pairs: _ } => {
-                self.output.push_str("NULL /* true HashMap requires complex C runtime */");
+                self.output
+                    .push_str("NULL /* true HashMap requires complex C runtime */");
             }
             Expression::IndexExpression { left, index } => {
                 self.generate_expression(left);
@@ -379,14 +443,19 @@ impl CodeGenerator {
                 if elements.is_empty() {
                     None
                 } else {
-                    self.infer_expression_type(&elements[0]).map(|t| Type::Array(Box::new(t)))
+                    self.infer_expression_type(&elements[0])
+                        .map(|t| Type::Array(Box::new(t)))
                 }
             }
             Expression::HashLiteral { .. } => None,
             Expression::IndexExpression { .. } => None,
             Expression::ReadInput { .. } => Some(Type::Sar),
             Expression::FunctionCall { .. } => None,
-            Expression::Binary { left, operator, right } => {
+            Expression::Binary {
+                left,
+                operator,
+                right,
+            } => {
                 let left_ty = self.infer_expression_type(left)?;
                 let right_ty = self.infer_expression_type(right)?;
                 match operator.as_str() {
@@ -402,7 +471,9 @@ impl CodeGenerator {
                     "==" | "!=" | ">" | "<" | ">=" | "<=" => Some(Type::Sit),
                     _ => None,
                 }
-            }            _ => None,        }
+            }
+            _ => None,
+        }
     }
 
     fn expression_to_c(&self, expr: &Expression) -> String {
@@ -410,7 +481,11 @@ impl CodeGenerator {
             Expression::IntegerLiteral(val) => val.to_string(),
             Expression::StringLiteral(val) => format!("\"{}\"", val),
             Expression::BooleanLiteral(val) => {
-                if *val { "true".to_string() } else { "false".to_string() }
+                if *val {
+                    "true".to_string()
+                } else {
+                    "false".to_string()
+                }
             }
             Expression::Identifier(name) => self.clean_identifier(name),
             _ => "0".to_string(),
@@ -429,14 +504,14 @@ impl CodeGenerator {
                         Type::Sar => "char*",
                         Type::Sit => "bool",
                         Type::Array(_) => "void*",
-                        Type::Map(_,_) => "void*",
+                        Type::Map(_, _) => "void*",
                         _ => "void*",
                     }
                 } else {
                     "long long"
                 }
             }
-            _ => "long long"
+            _ => "long long",
         }
     }
 
@@ -468,7 +543,7 @@ impl CodeGenerator {
                         Type::Sit => self.output.push_str("\"%d\\n\""),
                         Type::Array(_) => {
                             self.output.push_str("\"[Array]\\n\""); // Basic fallback for now
-                        },
+                        }
                         Type::Map(_, _) => {
                             self.output.push_str("\"[HashMap]\\n\""); // Basic fallback for now
                         }
@@ -479,12 +554,12 @@ impl CodeGenerator {
                 } else {
                     self.output.push_str("\"%lld\\n\""); // fallback
                 }
-            },
+            }
             Expression::Binary { .. } => self.output.push_str("\"%lld\\n\""), // assume int math for now
-            _ => self.output.push_str("\"%lld\\n\""), // default fallback
+            _ => self.output.push_str("\"%lld\\n\""),                         // default fallback
         }
     }
-    
+
     fn indent(&mut self) {
         for _ in 0..self.indent_level {
             self.output.push_str("    ");

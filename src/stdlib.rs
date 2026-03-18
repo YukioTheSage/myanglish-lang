@@ -62,7 +62,15 @@ fn http_module() -> StdlibModule {
     StdlibModule {
         mlang_name: "kainn/http",
         alias: "http",
-        go_imports: vec!["net/http", "io", "strings", "encoding/json", "net/url", "context", "time"],
+        go_imports: vec![
+            "net/http",
+            "io",
+            "strings",
+            "encoding/json",
+            "net/url",
+            "context",
+            "time",
+        ],
         structs: vec![
             StdlibStruct {
                 name: "http.Response",
@@ -402,7 +410,13 @@ fn database_module() -> StdlibModule {
     StdlibModule {
         mlang_name: "database",
         alias: "database",
-        go_imports: vec!["database/sql", "github.com/lib/pq", "fmt", "context", "time"],
+        go_imports: vec![
+            "database/sql",
+            "github.com/lib/pq",
+            "fmt",
+            "context",
+            "time",
+        ],
         structs: vec![StdlibStruct {
             name: "database.Conn",
             fields: vec![],

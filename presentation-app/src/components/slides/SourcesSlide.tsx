@@ -23,6 +23,11 @@ const externalSources = [
     url: "https://go.dev/doc/effective_go",
     note: "Used for idiomatic reference patterns such as explicit errors, functions, and channels.",
   },
+  {
+    title: "Myanglish Lang GitHub Repository",
+    url: "https://github.com/YukioTheSage/myanglish-lang",
+    note: "Used as the public implementation reference for the compiler, examples, and tooling shown in the presentation.",
+  },
 ];
 
 const internalSources = [
@@ -72,8 +77,8 @@ export default function SourcesSlide() {
             ))}
           </div>
           <p className="text-[0.8rem] text-text-secondary leading-relaxed">
-            The external sources support the academic review section, while the internal repository documents support the target-language and implementation
-            section of this presentation.
+            The external sources support both the academic review section and the public implementation reference, while the internal repository documents
+            support the target-language and implementation section of this presentation.
           </p>
         </div>
       </div>

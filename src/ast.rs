@@ -6,12 +6,12 @@ pub struct Span {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Type {
-    Kain, // int
-    Sar,  // string
-    Sit,  // bool
+    Kain,  // int
+    Sar,   // string
+    Sit,   // bool
     DaTha, // float64
     Baung, // context-like lifecycle scope
-    Nil,  // nil type (type of bhala)
+    Nil,   // nil type (type of bhala)
     Error, // error type (amhar)
     Array(Box<Type>),
     Channel(Box<Type>),
@@ -99,7 +99,7 @@ pub enum Expression {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum IfAlternative {
-    ElseIf(Box<Statement>),  // Statement::If for elif chains
+    ElseIf(Box<Statement>), // Statement::If for elif chains
     Else(BlockStatement),
 }
 

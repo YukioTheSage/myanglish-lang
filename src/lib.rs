@@ -1,10 +1,10 @@
-pub mod token;
-pub mod lexer;
 pub mod ast;
-pub mod parser;
-pub mod typecheck;
 pub mod codegen;
 pub mod codegen_go;
 pub mod formatter;
-pub mod stdlib;
+pub mod lexer;
 pub mod module_loader;
+pub mod parser;
+pub mod stdlib;
+pub mod token;
+pub mod typecheck;

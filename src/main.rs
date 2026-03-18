@@ -9,7 +9,7 @@ use mlang::ast::{BlockStatement, Expression, Program, Statement, Type};
 use mlang::codegen::CodeGenerator;
 use mlang::codegen_go::GoCodeGenerator;
 use mlang::formatter;
-use mlang::module_loader::{load_entry_program, LoadedProgram};
+use mlang::module_loader::{LoadedProgram, load_entry_program};
 use mlang::stdlib::resolve_stdlib_module;
 use mlang::typecheck::{Environment, TypeChecker};
 
@@ -563,7 +563,9 @@ fn compile_with_c_backend(
         }
         Err(e) => {
             eprintln!("Failed to invoke `gcc`: {}", e);
-            eprintln!("Please ensure `gcc` (MinGW-w64 on Windows) is installed and available in your PATH.");
+            eprintln!(
+                "Please ensure `gcc` (MinGW-w64 on Windows) is installed and available in your PATH."
+            );
             return None;
         }
     }
@@ -697,19 +699,11 @@ fn output_file_name(file_stem: &str, target: &str, go_target: &GoTargetOptions) 
 }
 
 fn native_binary_suffix() -> &'static str {
-    if cfg!(windows) {
-        ".exe"
-    } else {
-        ""
-    }
+    if cfg!(windows) { ".exe" } else { "" }
 }
 
 fn go_binary_suffix(goos: &str) -> &'static str {
-    if goos == "windows" {
-        ".exe"
-    } else {
-        ""
-    }
+    if goos == "windows" { ".exe" } else { "" }
 }
 
 fn host_go_target() -> (String, String) {

@@ -38,7 +38,7 @@ impl<'a> Parser<'a> {
     pub fn new(lexer: &'a mut Lexer) -> Self {
         let current_token = lexer.next_non_comment_token();
         let peek_token = lexer.next_non_comment_token();
-        
+
         Parser {
             lexer,
             current_token,
@@ -116,7 +116,7 @@ impl<'a> Parser<'a> {
                 } else {
                     self.parse_reassignment_or_expression_statement()
                 }
-            },
+            }
             _ => self.parse_expression_statement(),
         }
     }
@@ -216,22 +216,32 @@ impl<'a> Parser<'a> {
 
     fn parse_array_type(&mut self) -> Option<Type> {
         // Syntax: su<kain>
-        if !self.expect_peek(TokenKind::LessThan) { return None; }
+        if !self.expect_peek(TokenKind::LessThan) {
+            return None;
+        }
         self.next_token();
         let inner_type = self.parse_type()?;
-        if !self.expect_peek(TokenKind::GreaterThan) { return None; }
+        if !self.expect_peek(TokenKind::GreaterThan) {
+            return None;
+        }
         Some(Type::Array(Box::new(inner_type)))
     }
 
     fn parse_map_type(&mut self) -> Option<Type> {
         // Syntax: twe<sar, kain>
-        if !self.expect_peek(TokenKind::LessThan) { return None; }
+        if !self.expect_peek(TokenKind::LessThan) {
+            return None;
+        }
         self.next_token();
         let key_type = self.parse_type()?;
-        if !self.expect_peek(TokenKind::Comma) { return None; }
+        if !self.expect_peek(TokenKind::Comma) {
+            return None;
+        }
         self.next_token();
         let val_type = self.parse_type()?;
-        if !self.expect_peek(TokenKind::GreaterThan) { return None; }
+        if !self.expect_peek(TokenKind::GreaterThan) {
+            return None;
+        }
         Some(Type::Map(Box::new(key_type), Box::new(val_type)))
     }
 
@@ -379,7 +389,10 @@ impl<'a> Parser<'a> {
         if !self.expect_peek_identifier() {
             return None;
         }
-        let name_span1 = Span { line: self.current_token.line, column: self.current_token.column };
+        let name_span1 = Span {
+            line: self.current_token.line,
+            column: self.current_token.column,
+        };
         let name1 = match &self.current_token.kind {
             TokenKind::Identifier(n) => n.clone(),
             _ => return None,
@@ -396,7 +409,10 @@ impl<'a> Parser<'a> {
                 if !self.expect_peek_identifier() {
                     return None;
                 }
-                let span = Span { line: self.current_token.line, column: self.current_token.column };
+                let span = Span {
+                    line: self.current_token.line,
+                    column: self.current_token.column,
+                };
                 let name = match &self.current_token.kind {
                     TokenKind::Identifier(n) => n.clone(),
                     _ => return None,
@@ -427,7 +443,12 @@ impl<'a> Parser<'a> {
         if self.peek_token.kind == TokenKind::Semicolon {
             self.next_token();
         }
-        Some(Statement::Let { name: name1, value, ty: ty1, name_span: name_span1 })
+        Some(Statement::Let {
+            name: name1,
+            value,
+            ty: ty1,
+            name_span: name_span1,
+        })
     }
 
     fn parse_reassignment_or_expression_statement(&mut self) -> Option<Statement> {
@@ -585,7 +606,9 @@ impl<'a> Parser<'a> {
                 if self.peek_token.kind == TokenKind::Semicolon {
                     self.next_token();
                 }
-                return Some(Statement::Return { value: Expression::TupleLiteral { elements } });
+                return Some(Statement::Return {
+                    value: Expression::TupleLiteral { elements },
+                });
             }
             // Single grouped expression
             if !self.expect_peek(TokenKind::RParen) {
@@ -623,7 +646,10 @@ impl<'a> Parser<'a> {
     fn parse_go_statement(&mut self) -> Option<Statement> {
         self.next_token();
         let call = self.parse_expression(Precedence::Lowest)?;
-        if !matches!(call, Expression::FunctionCall { .. } | Expression::MethodCall { .. }) {
+        if !matches!(
+            call,
+            Expression::FunctionCall { .. } | Expression::MethodCall { .. }
+        ) {
             self.errors.push(ParseError {
                 message: "`kyoe` expects a function or method call".to_string(),
                 line: self.current_token.line,
@@ -640,7 +666,10 @@ impl<'a> Parser<'a> {
     fn parse_defer_statement(&mut self) -> Option<Statement> {
         self.next_token();
         let call = self.parse_expression(Precedence::Lowest)?;
-        if !matches!(call, Expression::FunctionCall { .. } | Expression::MethodCall { .. }) {
+        if !matches!(
+            call,
+            Expression::FunctionCall { .. } | Expression::MethodCall { .. }
+        ) {
             self.errors.push(ParseError {
                 message: "`naut_sone` expects a function or method call".to_string(),
                 line: self.current_token.line,
@@ -658,9 +687,9 @@ impl<'a> Parser<'a> {
         if !self.expect_peek(TokenKind::LParen) {
             return None;
         }
-        
+
         self.next_token();
-        
+
         let value = self.parse_expression(Precedence::Lowest)?;
 
         if !self.expect_peek(TokenKind::RParen) {
@@ -1008,7 +1037,10 @@ impl<'a> Parser<'a> {
             return None;
         }
 
-        let name_span = Span { line: self.current_token.line, column: self.current_token.column };
+        let name_span = Span {
+            line: self.current_token.line,
+            column: self.current_token.column,
+        };
         let iterator = match &self.current_token.kind {
             TokenKind::Identifier(n) => n.clone(),
             _ => return None,
@@ -1041,7 +1073,10 @@ impl<'a> Parser<'a> {
             return None;
         }
 
-        let name_span = Span { line: self.current_token.line, column: self.current_token.column };
+        let name_span = Span {
+            line: self.current_token.line,
+            column: self.current_token.column,
+        };
         let name = match &self.current_token.kind {
             TokenKind::Identifier(n) => n.clone(),
             _ => return None,
@@ -1080,7 +1115,10 @@ impl<'a> Parser<'a> {
         if !self.expect_peek_identifier() {
             return None;
         }
-        let name_span = Span { line: self.current_token.line, column: self.current_token.column };
+        let name_span = Span {
+            line: self.current_token.line,
+            column: self.current_token.column,
+        };
         let name = match &self.current_token.kind {
             TokenKind::Identifier(n) => n.clone(),
             _ => return None,
@@ -1090,7 +1128,9 @@ impl<'a> Parser<'a> {
         }
         let mut fields = Vec::new();
         self.next_token(); // move past '{'
-        while self.current_token.kind != TokenKind::RBrace && self.current_token.kind != TokenKind::Eof {
+        while self.current_token.kind != TokenKind::RBrace
+            && self.current_token.kind != TokenKind::Eof
+        {
             let field_type = self.parse_type()?;
             if !self.expect_peek_identifier() {
                 return None;
@@ -1105,7 +1145,11 @@ impl<'a> Parser<'a> {
             }
             self.next_token();
         }
-        Some(Statement::StructDecl { name, fields, name_span })
+        Some(Statement::StructDecl {
+            name,
+            fields,
+            name_span,
+        })
     }
 
     fn parse_method_declaration(&mut self) -> Option<Statement> {
@@ -1138,7 +1182,10 @@ impl<'a> Parser<'a> {
         if !self.expect_peek_identifier() {
             return None;
         }
-        let name_span = Span { line: self.current_token.line, column: self.current_token.column };
+        let name_span = Span {
+            line: self.current_token.line,
+            column: self.current_token.column,
+        };
         let name = match &self.current_token.kind {
             TokenKind::Identifier(n) => n.clone(),
             _ => return None,
@@ -1172,7 +1219,10 @@ impl<'a> Parser<'a> {
         if !self.expect_peek_identifier() {
             return None;
         }
-        let name_span = Span { line: self.current_token.line, column: self.current_token.column };
+        let name_span = Span {
+            line: self.current_token.line,
+            column: self.current_token.column,
+        };
         let name = match &self.current_token.kind {
             TokenKind::Identifier(n) => n.clone(),
             _ => return None,
@@ -1182,11 +1232,16 @@ impl<'a> Parser<'a> {
         }
         let mut methods = Vec::new();
         self.next_token(); // move past '{'
-        while self.current_token.kind != TokenKind::RBrace && self.current_token.kind != TokenKind::Eof {
+        while self.current_token.kind != TokenKind::RBrace
+            && self.current_token.kind != TokenKind::Eof
+        {
             // Each method: loke methodName(params) -> retType;
             if self.current_token.kind != TokenKind::Loke {
                 self.errors.push(ParseError {
-                    message: format!("Expected 'loke' in interface method declaration, got {:?}", self.current_token.kind),
+                    message: format!(
+                        "Expected 'loke' in interface method declaration, got {:?}",
+                        self.current_token.kind
+                    ),
                     line: self.current_token.line,
                     column: self.current_token.column,
                 });
@@ -1215,7 +1270,11 @@ impl<'a> Parser<'a> {
             }
             self.next_token();
         }
-        Some(Statement::InterfaceDecl { name, methods, name_span })
+        Some(Statement::InterfaceDecl {
+            name,
+            methods,
+            name_span,
+        })
     }
 
     fn parse_interface_params(&mut self) -> Option<Vec<(String, Type)>> {
@@ -1226,7 +1285,9 @@ impl<'a> Parser<'a> {
         }
         self.next_token();
         let ty = self.parse_type()?;
-        if !self.expect_peek_identifier() { return None; }
+        if !self.expect_peek_identifier() {
+            return None;
+        }
         let name = match &self.current_token.kind {
             TokenKind::Identifier(n) => n.clone(),
             _ => return None,
@@ -1236,7 +1297,9 @@ impl<'a> Parser<'a> {
             self.next_token();
             self.next_token();
             let ty = self.parse_type()?;
-            if !self.expect_peek_identifier() { return None; }
+            if !self.expect_peek_identifier() {
+                return None;
+            }
             let name = match &self.current_token.kind {
                 TokenKind::Identifier(n) => n.clone(),
                 _ => return None,
@@ -1260,9 +1323,14 @@ impl<'a> Parser<'a> {
         self.next_token();
 
         let ty = self.parse_type()?;
-        if !self.expect_peek_identifier() { return None; }
+        if !self.expect_peek_identifier() {
+            return None;
+        }
 
-        let span = Span { line: self.current_token.line, column: self.current_token.column };
+        let span = Span {
+            line: self.current_token.line,
+            column: self.current_token.column,
+        };
         match &self.current_token.kind {
             TokenKind::Identifier(n) => identifiers.push((n.clone(), ty, span)),
             _ => return None,
@@ -1273,9 +1341,14 @@ impl<'a> Parser<'a> {
             self.next_token();
 
             let ty = self.parse_type()?;
-            if !self.expect_peek_identifier() { return None; }
+            if !self.expect_peek_identifier() {
+                return None;
+            }
 
-            let span = Span { line: self.current_token.line, column: self.current_token.column };
+            let span = Span {
+                line: self.current_token.line,
+                column: self.current_token.column,
+            };
             match &self.current_token.kind {
                 TokenKind::Identifier(n) => identifiers.push((n.clone(), ty, span)),
                 _ => return None,
@@ -1295,7 +1368,9 @@ impl<'a> Parser<'a> {
         self.block_depth += 1;
         self.next_token();
 
-        while self.current_token.kind != TokenKind::RBrace && self.current_token.kind != TokenKind::Eof {
+        while self.current_token.kind != TokenKind::RBrace
+            && self.current_token.kind != TokenKind::Eof
+        {
             if let Some(stmt) = self.parse_statement() {
                 statements.push(stmt);
             }
@@ -1323,7 +1398,9 @@ impl<'a> Parser<'a> {
                 // Check for pyaung_ type conversion functions
                 if name.starts_with("pyaung_") {
                     self.parse_type_conversion(&name)
-                } else if self.peek_token.kind == TokenKind::LBrace && name.chars().next().map_or(false, |c| c.is_uppercase()) {
+                } else if self.peek_token.kind == TokenKind::LBrace
+                    && name.chars().next().map_or(false, |c| c.is_uppercase())
+                {
                     // Struct literal: Name { field: val, ... } (only if name starts with uppercase)
                     Some(self.parse_struct_literal_or_ident(&name))
                 } else {
@@ -1369,9 +1446,16 @@ impl<'a> Parser<'a> {
 
         while self.peek_token.kind != TokenKind::Semicolon && precedence < self.peek_precedence() {
             match self.peek_token.kind {
-                TokenKind::Plus | TokenKind::Minus | TokenKind::Star | TokenKind::Slash |
-                TokenKind::Equals | TokenKind::NotEquals | TokenKind::LessThan |
-                TokenKind::GreaterThan | TokenKind::LessEquals | TokenKind::GreaterEquals => {
+                TokenKind::Plus
+                | TokenKind::Minus
+                | TokenKind::Star
+                | TokenKind::Slash
+                | TokenKind::Equals
+                | TokenKind::NotEquals
+                | TokenKind::LessThan
+                | TokenKind::GreaterThan
+                | TokenKind::LessEquals
+                | TokenKind::GreaterEquals => {
                     self.next_token();
                     left = self.parse_infix_expression(left)?;
                 }
@@ -1428,17 +1512,20 @@ impl<'a> Parser<'a> {
         // We need to peek past LBrace to check if it looks like field: value
         let name = name.to_string();
         self.next_token(); // consume '{'
-        
+
         // Check for empty struct literal or field: pattern
         if self.peek_token.kind == TokenKind::RBrace {
             self.next_token(); // consume '}'
-            return Expression::StructLiteral { name, fields: vec![] };
+            return Expression::StructLiteral {
+                name,
+                fields: vec![],
+            };
         }
-        
+
         // Check if this looks like `identifier:` pattern (struct literal)
         // If peek after identifier is Colon, it's a struct literal
         self.next_token(); // move to first item
-        
+
         if let TokenKind::Identifier(field_name) = &self.current_token.kind {
             if self.peek_token.kind == TokenKind::Colon {
                 let field_name = field_name.clone();
@@ -1473,7 +1560,7 @@ impl<'a> Parser<'a> {
                 return Expression::StructLiteral { name, fields };
             }
         }
-        
+
         // Not a struct literal - this was actually a hash literal or something else
         // This shouldn't normally happen in well-formed code
         Expression::Identifier(name)
@@ -1489,7 +1576,9 @@ impl<'a> Parser<'a> {
         if !self.expect_peek(TokenKind::RParen) {
             return None;
         }
-        Some(Expression::ErrorCreate { message: Box::new(message) })
+        Some(Expression::ErrorCreate {
+            message: Box::new(message),
+        })
     }
 
     fn parse_closure_literal(&mut self) -> Option<Expression> {
@@ -1526,7 +1615,10 @@ impl<'a> Parser<'a> {
             TokenKind::Identifier(n) => n.clone(),
             _ => {
                 self.errors.push(ParseError {
-                    message: format!("Expected identifier after '.', got {:?}", self.current_token.kind),
+                    message: format!(
+                        "Expected identifier after '.', got {:?}",
+                        self.current_token.kind
+                    ),
                     line: self.current_token.line,
                     column: self.current_token.column,
                 });
@@ -1552,21 +1644,23 @@ impl<'a> Parser<'a> {
 
     fn parse_index_or_slice_expression(&mut self, left: Expression) -> Option<Expression> {
         self.next_token(); // move past '['
-        
+
         // Check for [:high] form
         if self.current_token.kind == TokenKind::Colon {
             self.next_token();
             let high = self.parse_expression(Precedence::Lowest)?;
-            if !self.expect_peek(TokenKind::RBracket) { return None; }
+            if !self.expect_peek(TokenKind::RBracket) {
+                return None;
+            }
             return Some(Expression::SliceExpression {
                 left: Box::new(left),
                 low: None,
                 high: Some(Box::new(high)),
             });
         }
-        
+
         let index_or_low = self.parse_expression(Precedence::Lowest)?;
-        
+
         // Check for slice: [low:high] or [low:]
         if self.peek_token.kind == TokenKind::Colon {
             self.next_token(); // consume ':'
@@ -1581,15 +1675,19 @@ impl<'a> Parser<'a> {
             }
             self.next_token();
             let high = self.parse_expression(Precedence::Lowest)?;
-            if !self.expect_peek(TokenKind::RBracket) { return None; }
+            if !self.expect_peek(TokenKind::RBracket) {
+                return None;
+            }
             return Some(Expression::SliceExpression {
                 left: Box::new(left),
                 low: Some(Box::new(index_or_low)),
                 high: Some(Box::new(high)),
             });
         }
-        
-        if !self.expect_peek(TokenKind::RBracket) { return None; }
+
+        if !self.expect_peek(TokenKind::RBracket) {
+            return None;
+        }
         Some(Expression::IndexExpression {
             left: Box::new(left),
             index: Box::new(index_or_low),
@@ -1609,9 +1707,9 @@ impl<'a> Parser<'a> {
         let operator = self.token_kind_to_string(&self.current_token.kind);
         let precedence = self.current_precedence();
         self.next_token();
-        
+
         let right = self.parse_expression(precedence)?;
-        
+
         Some(Expression::Binary {
             left: Box::new(left),
             operator,
@@ -1648,7 +1746,9 @@ impl<'a> Parser<'a> {
         self.next_token();
 
         let key = self.parse_expression(Precedence::Lowest)?;
-        if !self.expect_peek(TokenKind::Colon) { return None; }
+        if !self.expect_peek(TokenKind::Colon) {
+            return None;
+        }
         self.next_token();
         let value = self.parse_expression(Precedence::Lowest)?;
         pairs.push((key, value));
@@ -1657,7 +1757,9 @@ impl<'a> Parser<'a> {
             self.next_token();
             self.next_token();
             let key = self.parse_expression(Precedence::Lowest)?;
-            if !self.expect_peek(TokenKind::Colon) { return None; }
+            if !self.expect_peek(TokenKind::Colon) {
+                return None;
+            }
             self.next_token();
             let value = self.parse_expression(Precedence::Lowest)?;
             pairs.push((key, value));
@@ -1671,11 +1773,17 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_read_input(&mut self) -> Option<Expression> {
-        if !self.expect_peek(TokenKind::LParen) { return None; }
+        if !self.expect_peek(TokenKind::LParen) {
+            return None;
+        }
         self.next_token();
         let prompt = self.parse_expression(Precedence::Lowest)?;
-        if !self.expect_peek(TokenKind::RParen) { return None; }
-        Some(Expression::ReadInput { prompt: Box::new(prompt) })
+        if !self.expect_peek(TokenKind::RParen) {
+            return None;
+        }
+        Some(Expression::ReadInput {
+            prompt: Box::new(prompt),
+        })
     }
 
     fn parse_channel_make(&mut self) -> Option<Expression> {
@@ -1762,7 +1870,10 @@ impl<'a> Parser<'a> {
     fn get_precedence(&self, kind: &TokenKind) -> Precedence {
         match kind {
             TokenKind::Equals | TokenKind::NotEquals => Precedence::Equals,
-            TokenKind::LessThan | TokenKind::GreaterThan | TokenKind::LessEquals | TokenKind::GreaterEquals => Precedence::LessGreater,
+            TokenKind::LessThan
+            | TokenKind::GreaterThan
+            | TokenKind::LessEquals
+            | TokenKind::GreaterEquals => Precedence::LessGreater,
             TokenKind::Plus | TokenKind::Minus => Precedence::Sum,
             TokenKind::Star | TokenKind::Slash => Precedence::Product,
             TokenKind::LParen => Precedence::Call,
@@ -1806,7 +1917,10 @@ impl<'a> Parser<'a> {
             }
             _ => {
                 self.errors.push(ParseError {
-                    message: format!("Expected next token to be Identifier, got {:?}", self.peek_token.kind),
+                    message: format!(
+                        "Expected next token to be Identifier, got {:?}",
+                        self.peek_token.kind
+                    ),
                     line: self.peek_token.line,
                     column: self.peek_token.column,
                 });
@@ -1852,18 +1966,37 @@ mod tests {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
 
-        if let Statement::FunctionDecl { name, name_span, body, .. } = &program.statements[0] {
+        if let Statement::FunctionDecl {
+            name,
+            name_span,
+            body,
+            ..
+        } = &program.statements[0]
+        {
             assert_eq!(name, "main");
-            println!("FunctionDecl '{}' span: line={}, col={}", name, name_span.line, name_span.column);
+            println!(
+                "FunctionDecl '{}' span: line={}, col={}",
+                name, name_span.line, name_span.column
+            );
             // Lexer starts at line=1, so function name should be line 1
             assert_eq!(name_span.line, 1);
             assert!(name_span.column > 0, "column should be > 0");
 
-            if let Statement::Let { name, name_span, .. } = &body.statements[0] {
+            if let Statement::Let {
+                name, name_span, ..
+            } = &body.statements[0]
+            {
                 assert_eq!(name, "age");
-                println!("Let '{}' span: line={}, col={}", name, name_span.line, name_span.column);
+                println!(
+                    "Let '{}' span: line={}, col={}",
+                    name, name_span.line, name_span.column
+                );
                 // Should be on line 2
                 assert_eq!(name_span.line, 2);
                 assert!(name_span.column > 0);
@@ -1888,7 +2021,13 @@ mod tests {
 
         let program = parser.parse_program().unwrap();
         assert_eq!(program.statements.len(), 1);
-        if let Statement::FunctionDecl { name, parameters, return_type, .. } = &program.statements[0] {
+        if let Statement::FunctionDecl {
+            name,
+            parameters,
+            return_type,
+            ..
+        } = &program.statements[0]
+        {
             assert_eq!(name, "main");
             assert_eq!(parameters.len(), 2);
             assert_eq!(return_type, &Type::Kain);
@@ -1931,7 +2070,11 @@ mod tests {
         let mut parser = Parser::new(&mut lexer);
 
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
         assert_eq!(program.statements.len(), 2);
 
         match &program.statements[0] {
@@ -1956,7 +2099,11 @@ mod tests {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
 
         let Statement::FunctionDecl { body, .. } = &program.statements[0] else {
             panic!("Expected function declaration");
@@ -2011,7 +2158,11 @@ mod tests {
             match alternative {
                 Some(IfAlternative::ElseIf(elif_stmt)) => {
                     // The elif should itself be an If with an Else alternative
-                    if let Statement::If { alternative: inner_alt, .. } = elif_stmt.as_ref() {
+                    if let Statement::If {
+                        alternative: inner_alt,
+                        ..
+                    } = elif_stmt.as_ref()
+                    {
                         assert!(matches!(inner_alt, Some(IfAlternative::Else(_))));
                     } else {
                         panic!("Expected inner If statement in elif");
@@ -2037,7 +2188,11 @@ mod tests {
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
 
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
         assert_eq!(program.statements.len(), 2);
         assert!(matches!(program.statements[1], Statement::ForIn { .. }));
     }
@@ -2056,13 +2211,15 @@ mod tests {
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
 
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
         assert_eq!(program.statements.len(), 2);
         match &program.statements[1] {
             Statement::ForIn {
-                index,
-                iterator,
-                ..
+                index, iterator, ..
             } => {
                 assert_eq!(index.as_deref(), Some("i"));
                 assert_eq!(iterator, "item");
@@ -2086,7 +2243,11 @@ loke main() -> kain {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let _program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
     }
 
     #[test]
@@ -2103,7 +2264,11 @@ loke main() -> kain {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let _program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
     }
 
     #[test]
@@ -2126,7 +2291,11 @@ loke main() -> kain {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let _program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
     }
 
     #[test]
@@ -2147,7 +2316,11 @@ loke main() -> kain {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let _program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
     }
 
     #[test]
@@ -2161,8 +2334,15 @@ pay loke add(kain a, kain b) -> kain {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
-        assert!(matches!(program.statements[0], Statement::PackageDecl { .. }));
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
+        assert!(matches!(
+            program.statements[0],
+            Statement::PackageDecl { .. }
+        ));
         assert!(matches!(program.statements[1], Statement::Export { .. }));
     }
 
@@ -2179,7 +2359,11 @@ loke main() -> kain {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
         let Statement::FunctionDecl { body, .. } = &program.statements[0] else {
             panic!("Expected function declaration");
         };
@@ -2207,7 +2391,11 @@ loke main() -> kain {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
 
         let Statement::FunctionDecl { body, .. } = &program.statements[0] else {
             panic!("Expected first function declaration");
@@ -2235,7 +2423,12 @@ loke main() -> kain {
         let _program = parser.parse_program().unwrap();
 
         assert!(!parser.errors.is_empty());
-        assert!(parser.errors.iter().any(|e| e.message.contains("expects a function or method call")));
+        assert!(
+            parser
+                .errors
+                .iter()
+                .any(|e| e.message.contains("expects a function or method call"))
+        );
     }
 
     #[test]
@@ -2269,7 +2462,11 @@ set_sae timeout_guard {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
         assert_eq!(program.statements.len(), 1);
         match &program.statements[0] {
             Statement::TestDecl { name, body, .. } => {

@@ -425,7 +425,7 @@ fn find_project_root(entry: &Path) -> PathBuf {
                 return entry
                     .parent()
                     .unwrap_or_else(|| Path::new("."))
-                    .to_path_buf()
+                    .to_path_buf();
             }
         }
     }

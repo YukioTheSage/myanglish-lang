@@ -48,7 +48,10 @@ impl Lexer {
         let start_line = self.line;
 
         let kind = match self.ch {
-            '+' => { self.read_char(); TokenKind::Plus }
+            '+' => {
+                self.read_char();
+                TokenKind::Plus
+            }
             '-' => {
                 if self.peek_char() == '>' {
                     self.read_char();
@@ -59,7 +62,10 @@ impl Lexer {
                     TokenKind::Minus
                 }
             }
-            '*' => { self.read_char(); TokenKind::Star }
+            '*' => {
+                self.read_char();
+                TokenKind::Star
+            }
             '/' => {
                 if self.peek_char() == '/' {
                     // It's a comment. Consume the '//' then read until newline or EOF.
@@ -120,16 +126,46 @@ impl Lexer {
                     TokenKind::LessThan
                 }
             }
-            '(' => { self.read_char(); TokenKind::LParen }
-            ')' => { self.read_char(); TokenKind::RParen }
-            '{' => { self.read_char(); TokenKind::LBrace }
-            '}' => { self.read_char(); TokenKind::RBrace }
-            '[' => { self.read_char(); TokenKind::LBracket }
-            ']' => { self.read_char(); TokenKind::RBracket }
-            ',' => { self.read_char(); TokenKind::Comma }
-            ';' => { self.read_char(); TokenKind::Semicolon }
-            ':' => { self.read_char(); TokenKind::Colon }
-            '.' => { self.read_char(); TokenKind::Dot }
+            '(' => {
+                self.read_char();
+                TokenKind::LParen
+            }
+            ')' => {
+                self.read_char();
+                TokenKind::RParen
+            }
+            '{' => {
+                self.read_char();
+                TokenKind::LBrace
+            }
+            '}' => {
+                self.read_char();
+                TokenKind::RBrace
+            }
+            '[' => {
+                self.read_char();
+                TokenKind::LBracket
+            }
+            ']' => {
+                self.read_char();
+                TokenKind::RBracket
+            }
+            ',' => {
+                self.read_char();
+                TokenKind::Comma
+            }
+            ';' => {
+                self.read_char();
+                TokenKind::Semicolon
+            }
+            ':' => {
+                self.read_char();
+                TokenKind::Colon
+            }
+            '.' => {
+                self.read_char();
+                TokenKind::Dot
+            }
             '"' => self.read_string(),
             '\0' => TokenKind::Eof,
             _ => {
@@ -181,7 +217,9 @@ impl Lexer {
             self.read_char();
         }
         // Check for float literal: digit(s) followed by '.' followed by digit
-        if self.ch == '.' && (self.peek_char().is_ascii_digit() || is_myanmar_digit(self.peek_char())) {
+        if self.ch == '.'
+            && (self.peek_char().is_ascii_digit() || is_myanmar_digit(self.peek_char()))
+        {
             self.read_char(); // consume '.'
             let mut frac: f64 = 0.0;
             let mut frac_div: f64 = 1.0;
@@ -329,22 +367,89 @@ mod tests {
 
         let expected = vec![
             Comment(" this is a comment".to_string()),
-            Loke, Identifier("main".to_string()), LParen, RParen, Arrow, Kain, LBrace,
-            Kain, Identifier("age".to_string()), Assign, Number(20), Semicolon,
-            Su, LessThan, Kain, GreaterThan, Identifier("numbers".to_string()), Assign, LBracket, Number(1), Comma, Number(2), RBracket, Semicolon,
-            Twe, LessThan, Sar, Comma, Kain, GreaterThan, Identifier("dict".to_string()), Assign, LBrace, StringLiteral("a".to_string()), Colon, Number(1), RBrace, Semicolon,
-            Phat, LParen, StringLiteral("name?".to_string()), RParen, Semicolon,
-            Yu, Identifier("test".to_string()), Semicolon,
-            Pat, Identifier("item".to_string()), Htae, Identifier("numbers".to_string()), LBrace,
-            Pya, LParen, Identifier("item".to_string()), RParen, Semicolon,
+            Loke,
+            Identifier("main".to_string()),
+            LParen,
+            RParen,
+            Arrow,
+            Kain,
+            LBrace,
+            Kain,
+            Identifier("age".to_string()),
+            Assign,
+            Number(20),
+            Semicolon,
+            Su,
+            LessThan,
+            Kain,
+            GreaterThan,
+            Identifier("numbers".to_string()),
+            Assign,
+            LBracket,
+            Number(1),
+            Comma,
+            Number(2),
+            RBracket,
+            Semicolon,
+            Twe,
+            LessThan,
+            Sar,
+            Comma,
+            Kain,
+            GreaterThan,
+            Identifier("dict".to_string()),
+            Assign,
+            LBrace,
+            StringLiteral("a".to_string()),
+            Colon,
+            Number(1),
             RBrace,
-            Hlyin, LParen, Identifier("age".to_string()), GreaterThan, Number(18), RParen, LBrace,
-            Pya, LParen, StringLiteral("adult".to_string()), RParen, Semicolon,
-            RBrace, Mo, LBrace,
-            Pya, LParen, StringLiteral("child".to_string()), RParen, Semicolon,
+            Semicolon,
+            Phat,
+            LParen,
+            StringLiteral("name?".to_string()),
+            RParen,
+            Semicolon,
+            Yu,
+            Identifier("test".to_string()),
+            Semicolon,
+            Pat,
+            Identifier("item".to_string()),
+            Htae,
+            Identifier("numbers".to_string()),
+            LBrace,
+            Pya,
+            LParen,
+            Identifier("item".to_string()),
+            RParen,
+            Semicolon,
             RBrace,
-            Pyan, Number(0), Semicolon,
-            RBrace, Eof
+            Hlyin,
+            LParen,
+            Identifier("age".to_string()),
+            GreaterThan,
+            Number(18),
+            RParen,
+            LBrace,
+            Pya,
+            LParen,
+            StringLiteral("adult".to_string()),
+            RParen,
+            Semicolon,
+            RBrace,
+            Mo,
+            LBrace,
+            Pya,
+            LParen,
+            StringLiteral("child".to_string()),
+            RParen,
+            Semicolon,
+            RBrace,
+            Pyan,
+            Number(0),
+            Semicolon,
+            RBrace,
+            Eof,
         ];
 
         for expected_tok in expected {

@@ -1,6 +1,6 @@
-use std::collections::HashMap;
 use crate::ast::{BlockStatement, Expression, IfAlternative, Program, Statement, Type};
 use crate::stdlib::resolve_stdlib_module;
+use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct Symbol {
@@ -94,10 +94,9 @@ impl TypeChecker {
                         .zip(actual_items.iter())
                         .all(|(e, a)| self.is_assignable(e, a))
             }
-            (
-                Type::Channel(expected_inner),
-                Type::Channel(actual_inner),
-            ) => self.is_assignable(expected_inner, actual_inner),
+            (Type::Channel(expected_inner), Type::Channel(actual_inner)) => {
+                self.is_assignable(expected_inner, actual_inner)
+            }
             (
                 Type::Function {
                     params: expected_params,
@@ -129,7 +128,13 @@ impl TypeChecker {
         let Expression::Identifier(name) = object.as_ref() else {
             return false;
         };
-        matches!(env.get(name), Some(Symbol { ty: Type::Channel(_), .. }))
+        matches!(
+            env.get(name),
+            Some(Symbol {
+                ty: Type::Channel(_),
+                ..
+            })
+        )
     }
 
     fn report_channel_side_effect_value_use(&mut self, expr: &Expression, env: &Environment) {
@@ -163,8 +168,7 @@ impl TypeChecker {
                 let method_sigs: Vec<(String, Vec<Type>, Type)> = methods
                     .iter()
                     .map(|(mname, params, ret)| {
-                        let ptypes: Vec<Type> =
-                            params.iter().map(|(_, ty)| ty.clone()).collect();
+                        let ptypes: Vec<Type> = params.iter().map(|(_, ty)| ty.clone()).collect();
                         (mname.clone(), ptypes, ret.clone())
                     })
                     .collect();
@@ -225,18 +229,26 @@ impl TypeChecker {
     fn check_statement(&mut self, stmt: &Statement, env: &mut Environment) {
         match stmt {
             Statement::PackageDecl { .. } => {}
-            Statement::Let { name, value, ty, .. } => {
+            Statement::Let {
+                name, value, ty, ..
+            } => {
                 self.report_channel_side_effect_value_use(value, env);
                 let value_type = self.check_expression(value, env);
                 if let Some(vt) = value_type {
                     if !self.is_assignable(ty, &vt) {
-                        self.push_error(format!("Type mismatch: cannot assign `{:?}` to variable `{}` of type `{:?}`", vt, name, ty));
+                        self.push_error(format!(
+                            "Type mismatch: cannot assign `{:?}` to variable `{}` of type `{:?}`",
+                            vt, name, ty
+                        ));
                     } else {
-                        env.set(name.clone(), Symbol {
-                            ty: ty.clone(),
-                            is_function: false,
-                            parameters: vec![],
-                        });
+                        env.set(
+                            name.clone(),
+                            Symbol {
+                                ty: ty.clone(),
+                                is_function: false,
+                                parameters: vec![],
+                            },
+                        );
                     }
                 }
             }
@@ -245,17 +257,24 @@ impl TypeChecker {
                 let value_type = self.check_expression(value, env);
                 if let Some(Type::Tuple(types)) = value_type {
                     if types.len() != names.len() {
-                        self.push_error(format!("Destructuring mismatch: expected {} values, got {}", names.len(), types.len()));
+                        self.push_error(format!(
+                            "Destructuring mismatch: expected {} values, got {}",
+                            names.len(),
+                            types.len()
+                        ));
                     } else {
                         for (i, (name, ty, _)) in names.iter().enumerate() {
                             if !self.is_assignable(ty, &types[i]) {
                                 self.push_error(format!("Type mismatch in destructuring: expected {:?} for `{}`, got {:?}", ty, name, types[i]));
                             }
-                            env.set(name.clone(), Symbol {
-                                ty: ty.clone(),
-                                is_function: false,
-                                parameters: vec![],
-                            });
+                            env.set(
+                                name.clone(),
+                                Symbol {
+                                    ty: ty.clone(),
+                                    is_function: false,
+                                    parameters: vec![],
+                                },
+                            );
                         }
                     }
                 }
@@ -299,10 +318,7 @@ impl TypeChecker {
                 };
 
                 let Some((_, field_ty)) = fields.iter().find(|(fname, _)| fname == field) else {
-                    self.push_error(format!(
-                        "Struct `{}` has no field `{}`",
-                        struct_name, field
-                    ));
+                    self.push_error(format!("Struct `{}` has no field `{}`", struct_name, field));
                     return;
                 };
 
@@ -335,7 +351,9 @@ impl TypeChecker {
                 match object_ty {
                     Type::Array(inner) => {
                         if index_ty != Type::Kain {
-                            self.push_error("Array index assignment requires kain index".to_string());
+                            self.push_error(
+                                "Array index assignment requires kain index".to_string(),
+                            );
                         }
                         if !self.is_assignable(&inner, &value_ty) {
                             self.push_error(format!(
@@ -366,31 +384,43 @@ impl TypeChecker {
                     }
                 }
             }
-            Statement::FunctionDecl { name, parameters, return_type, body, .. } => {
+            Statement::FunctionDecl {
+                name,
+                parameters,
+                return_type,
+                body,
+                ..
+            } => {
                 let mut param_types = Vec::new();
                 for (_, ty, _) in parameters {
                     param_types.push(ty.clone());
                 }
-                
-                env.set(name.clone(), Symbol {
-                    ty: Type::Function {
-                        params: param_types.clone(),
-                        return_type: Box::new(return_type.clone()),
+
+                env.set(
+                    name.clone(),
+                    Symbol {
+                        ty: Type::Function {
+                            params: param_types.clone(),
+                            return_type: Box::new(return_type.clone()),
+                        },
+                        is_function: true,
+                        parameters: param_types,
                     },
-                    is_function: true,
-                    parameters: param_types,
-                });
+                );
 
                 let mut enclosed_env = Environment::new_enclosed(env.clone());
-                
+
                 for (param_name, param_type, _) in parameters {
-                    enclosed_env.set(param_name.clone(), Symbol {
-                        ty: param_type.clone(),
-                        is_function: false,
-                        parameters: vec![],
-                    });
+                    enclosed_env.set(
+                        param_name.clone(),
+                        Symbol {
+                            ty: param_type.clone(),
+                            is_function: false,
+                            parameters: vec![],
+                        },
+                    );
                 }
-                
+
                 self.callable_depth += 1;
                 self.check_block_statement(body, &mut enclosed_env, Some(return_type));
                 self.callable_depth = self.callable_depth.saturating_sub(1);
@@ -403,11 +433,18 @@ impl TypeChecker {
                 self.report_channel_side_effect_value_use(value, env);
                 self.check_expression(value, env);
             }
-            Statement::If { condition, consequence, alternative } => {
+            Statement::If {
+                condition,
+                consequence,
+                alternative,
+            } => {
                 self.report_channel_side_effect_value_use(condition, env);
                 let cond_ty = self.check_expression(condition, env);
                 if cond_ty != Some(Type::Sit) {
-                    self.push_error(format!("If condition must be a boolean (sit), got {:?}", cond_ty));
+                    self.push_error(format!(
+                        "If condition must be a boolean (sit), got {:?}",
+                        cond_ty
+                    ));
                 }
                 self.check_block_statement(consequence, env, None);
                 if let Some(alt) = alternative {
@@ -425,7 +462,10 @@ impl TypeChecker {
                 self.report_channel_side_effect_value_use(condition, env);
                 let cond_ty = self.check_expression(condition, env);
                 if cond_ty != Some(Type::Sit) {
-                    self.push_error(format!("While condition must be a boolean (sit), got {:?}", cond_ty));
+                    self.push_error(format!(
+                        "While condition must be a boolean (sit), got {:?}",
+                        cond_ty
+                    ));
                 }
                 self.loop_depth += 1;
                 self.check_block_statement(body, env, None);
@@ -452,23 +492,32 @@ impl TypeChecker {
                 match collection_type {
                     Some(Type::Array(inner)) => {
                         if let Some(index_name) = index {
-                            env.set(index_name.clone(), Symbol {
-                                ty: Type::Kain,
+                            env.set(
+                                index_name.clone(),
+                                Symbol {
+                                    ty: Type::Kain,
+                                    is_function: false,
+                                    parameters: vec![],
+                                },
+                            );
+                        }
+                        env.set(
+                            iterator.clone(),
+                            Symbol {
+                                ty: (*inner).clone(),
                                 is_function: false,
                                 parameters: vec![],
-                            });
-                        }
-                        env.set(iterator.clone(), Symbol {
-                            ty: (*inner).clone(),
-                            is_function: false,
-                            parameters: vec![],
-                        });
+                            },
+                        );
                         self.loop_depth += 1;
                         self.check_block_statement(body, env, None);
                         self.loop_depth -= 1;
                     }
                     Some(other) => {
-                        self.push_error(format!("For-in collection must be an array (su<...>), got {:?}", other));
+                        self.push_error(format!(
+                            "For-in collection must be an array (su<...>), got {:?}",
+                            other
+                        ));
                     }
                     None => {}
                 }
@@ -501,16 +550,25 @@ impl TypeChecker {
                 self.loop_depth -= 1;
             }
             Statement::Go { call } => {
-                if !matches!(call, Expression::FunctionCall { .. } | Expression::MethodCall { .. }) {
+                if !matches!(
+                    call,
+                    Expression::FunctionCall { .. } | Expression::MethodCall { .. }
+                ) {
                     self.push_error("`kyoe` expects a function or method call".to_string());
                 }
                 self.check_expression(call, env);
             }
             Statement::Defer { call } => {
                 if self.callable_depth == 0 {
-                    self.push_error("`naut_sone` is only allowed inside function/method/closure bodies".to_string());
+                    self.push_error(
+                        "`naut_sone` is only allowed inside function/method/closure bodies"
+                            .to_string(),
+                    );
                 }
-                if !matches!(call, Expression::FunctionCall { .. } | Expression::MethodCall { .. }) {
+                if !matches!(
+                    call,
+                    Expression::FunctionCall { .. } | Expression::MethodCall { .. }
+                ) {
                     self.push_error("`naut_sone` expects a function or method call".to_string());
                 }
                 self.check_expression(call, env);
@@ -533,35 +591,53 @@ impl TypeChecker {
             Statement::StructDecl { name, fields, .. } => {
                 self.struct_registry.insert(name.clone(), fields.clone());
             }
-            Statement::MethodDecl { receiver_type, receiver_name, name, parameters, return_type, body, .. } => {
-                let param_types: Vec<Type> = parameters.iter().map(|(_, ty, _)| ty.clone()).collect();
+            Statement::MethodDecl {
+                receiver_type,
+                receiver_name,
+                name,
+                parameters,
+                return_type,
+                body,
+                ..
+            } => {
+                let param_types: Vec<Type> =
+                    parameters.iter().map(|(_, ty, _)| ty.clone()).collect();
                 self.method_registry.insert(
                     (receiver_type.clone(), name.clone()),
                     (param_types, return_type.clone()),
                 );
 
                 let mut enclosed_env = Environment::new_enclosed(env.clone());
-                enclosed_env.set(receiver_name.clone(), Symbol {
-                    ty: Type::Struct(receiver_type.clone()),
-                    is_function: false,
-                    parameters: vec![],
-                });
-                for (param_name, param_type, _) in parameters {
-                    enclosed_env.set(param_name.clone(), Symbol {
-                        ty: param_type.clone(),
+                enclosed_env.set(
+                    receiver_name.clone(),
+                    Symbol {
+                        ty: Type::Struct(receiver_type.clone()),
                         is_function: false,
                         parameters: vec![],
-                    });
+                    },
+                );
+                for (param_name, param_type, _) in parameters {
+                    enclosed_env.set(
+                        param_name.clone(),
+                        Symbol {
+                            ty: param_type.clone(),
+                            is_function: false,
+                            parameters: vec![],
+                        },
+                    );
                 }
                 self.callable_depth += 1;
                 self.check_block_statement(body, &mut enclosed_env, Some(return_type));
                 self.callable_depth = self.callable_depth.saturating_sub(1);
             }
             Statement::InterfaceDecl { name, methods, .. } => {
-                let method_sigs: Vec<(String, Vec<Type>, Type)> = methods.iter().map(|(mname, params, ret)| {
-                    let ptypes: Vec<Type> = params.iter().map(|(_, ty)| ty.clone()).collect();
-                    (mname.clone(), ptypes, ret.clone())
-                }).collect();
+                let method_sigs: Vec<(String, Vec<Type>, Type)> = methods
+                    .iter()
+                    .map(|(mname, params, ret)| {
+                        let ptypes: Vec<Type> = params.iter().map(|(_, ty)| ty.clone()).collect();
+                        (mname.clone(), ptypes, ret.clone())
+                    })
+                    .collect();
                 self.interface_registry.insert(name.clone(), method_sigs);
             }
             Statement::Export { statement, .. } => {
@@ -570,16 +646,24 @@ impl TypeChecker {
         }
     }
 
-    fn check_block_statement(&mut self, block: &BlockStatement, env: &mut Environment, expected_return: Option<&Type>) {
+    fn check_block_statement(
+        &mut self,
+        block: &BlockStatement,
+        env: &mut Environment,
+        expected_return: Option<&Type>,
+    ) {
         for stmt in &block.statements {
             self.check_statement(stmt, env);
-            
+
             if let Statement::Return { value } = stmt {
                 if let Some(ret_type) = expected_return {
                     let actual_type = self.check_expression(value, env);
                     if let Some(act) = actual_type {
                         if !self.is_assignable(ret_type, &act) {
-                            self.push_error(format!("Return type mismatch: expected {:?}, got {:?}", ret_type, act));
+                            self.push_error(format!(
+                                "Return type mismatch: expected {:?}, got {:?}",
+                                ret_type, act
+                            ));
                         }
                     }
                 }
@@ -633,15 +717,13 @@ impl TypeChecker {
             Expression::StringLiteral(_) => Some(Type::Sar),
             Expression::BooleanLiteral(_) => Some(Type::Sit),
             Expression::NilLiteral => Some(Type::Nil),
-            Expression::Identifier(name) => {
-                match env.get(name) {
-                    Some(sym) => Some(sym.ty),
-                    None => {
-                        self.push_error(format!("Undeclared identifier `{}`", name));
-                        None
-                    }
+            Expression::Identifier(name) => match env.get(name) {
+                Some(sym) => Some(sym.ty),
+                None => {
+                    self.push_error(format!("Undeclared identifier `{}`", name));
+                    None
                 }
-            }
+            },
             Expression::ArrayLiteral { elements } => {
                 if elements.is_empty() {
                     return None;
@@ -650,7 +732,10 @@ impl TypeChecker {
                 for el in elements.iter().skip(1) {
                     let ty = self.check_expression(el, env)?;
                     if ty != first_ty {
-                        self.push_error(format!("Array elements must have the same type. Expected {:?}, got {:?}", first_ty, ty));
+                        self.push_error(format!(
+                            "Array elements must have the same type. Expected {:?}, got {:?}",
+                            first_ty, ty
+                        ));
                     }
                 }
                 Some(Type::Array(Box::new(first_ty)))
@@ -662,10 +747,7 @@ impl TypeChecker {
                 if let Some(cap_expr) = capacity {
                     let cap_ty = self.check_expression(cap_expr, env)?;
                     if cap_ty != Type::Kain {
-                        self.push_error(format!(
-                            "laung capacity must be `kain`, got {:?}",
-                            cap_ty
-                        ));
+                        self.push_error(format!("laung capacity must be `kain`, got {:?}", cap_ty));
                     }
                 }
                 Some(Type::Channel(value_type.clone()))
@@ -681,10 +763,12 @@ impl TypeChecker {
                 Some(Type::Baung)
             }
             Expression::HashLiteral { pairs } => {
-                if pairs.is_empty() { return None; }
+                if pairs.is_empty() {
+                    return None;
+                }
                 let key_ty = self.check_expression(&pairs[0].0, env)?;
                 let val_ty = self.check_expression(&pairs[0].1, env)?;
-                
+
                 for (k, v) in pairs.iter().skip(1) {
                     let k_t = self.check_expression(k, env)?;
                     let v_t = self.check_expression(v, env)?;
@@ -697,7 +781,7 @@ impl TypeChecker {
             Expression::IndexExpression { left, index } => {
                 let left_ty = self.check_expression(left, env)?;
                 let index_ty = self.check_expression(index, env)?;
-                
+
                 match left_ty {
                     Type::Array(inner) => {
                         if index_ty != Type::Kain {
@@ -712,7 +796,10 @@ impl TypeChecker {
                         Some(*val)
                     }
                     _ => {
-                        self.push_error(format!("Cannot index into non-collection type {:?}", left_ty));
+                        self.push_error(format!(
+                            "Cannot index into non-collection type {:?}",
+                            left_ty
+                        ));
                         None
                     }
                 }
@@ -745,15 +832,22 @@ impl TypeChecker {
                 }
                 Some(Type::Sar)
             }
-            Expression::TypeConversion { target_type, argument } => {
+            Expression::TypeConversion {
+                target_type,
+                argument,
+            } => {
                 let _arg_type = self.check_expression(argument, env)?;
                 // Allow conversions between Kain, Sar, DaTha
                 Some(target_type.clone())
             }
-            Expression::Binary { left, operator, right } => {
+            Expression::Binary {
+                left,
+                operator,
+                right,
+            } => {
                 let left_ty = self.check_expression(left, env)?;
                 let right_ty = self.check_expression(right, env)?;
-                
+
                 match operator.as_str() {
                     "+" | "-" | "*" | "/" => {
                         if left_ty == Type::Kain && right_ty == Type::Kain {
@@ -763,7 +857,10 @@ impl TypeChecker {
                         } else if operator == "+" && left_ty == Type::Sar && right_ty == Type::Sar {
                             Some(Type::Sar)
                         } else {
-                            self.push_error(format!("Operator `{}` requires matching numeric types or strings", operator));
+                            self.push_error(format!(
+                                "Operator `{}` requires matching numeric types or strings",
+                                operator
+                            ));
                             None
                         }
                     }
@@ -774,7 +871,10 @@ impl TypeChecker {
                         } else if left_ty == right_ty {
                             Some(Type::Sit)
                         } else {
-                            self.push_error(format!("Cannot compare differing types {:?} and {:?}", left_ty, right_ty));
+                            self.push_error(format!(
+                                "Cannot compare differing types {:?} and {:?}",
+                                left_ty, right_ty
+                            ));
                             None
                         }
                     }
@@ -784,14 +884,20 @@ impl TypeChecker {
                         } else if left_ty == Type::DaTha && right_ty == Type::DaTha {
                             Some(Type::Sit)
                         } else {
-                            self.push_error(format!("Operator `{}` requires two integers (kain) or two floats (da_tha)", operator));
+                            self.push_error(format!(
+                                "Operator `{}` requires two integers (kain) or two floats (da_tha)",
+                                operator
+                            ));
                             None
                         }
                     }
                     _ => None,
                 }
             }
-            Expression::FunctionCall { function, arguments } => {
+            Expression::FunctionCall {
+                function,
+                arguments,
+            } => {
                 // Check for built-in functions
                 match function.as_str() {
                     "htae" => {
@@ -804,7 +910,10 @@ impl TypeChecker {
                         let elem_ty = self.check_expression(&arguments[1], env)?;
                         if let Type::Array(inner) = &arr_ty {
                             if !self.is_assignable(inner, &elem_ty) {
-                                self.push_error(format!("htae element type mismatch: expected {:?}, got {:?}", inner, elem_ty));
+                                self.push_error(format!(
+                                    "htae element type mismatch: expected {:?}, got {:?}",
+                                    inner, elem_ty
+                                ));
                             }
                             Some(arr_ty.clone())
                         } else {
@@ -822,58 +931,61 @@ impl TypeChecker {
                         match arg_ty {
                             Type::Array(_) | Type::Sar | Type::Map(_, _) => Some(Type::Kain),
                             _ => {
-                                self.push_error(format!("ashay() argument must be array, string, or map, got {:?}", arg_ty));
+                                self.push_error(format!(
+                                    "ashay() argument must be array, string, or map, got {:?}",
+                                    arg_ty
+                                ));
                                 None
                             }
                         }
                     }
-                    _ => {
-                        match env.get(function) {
-                            Some(sym) => {
-                                let (expected_params, return_type) = match &sym.ty {
-                                    Type::Function {
-                                        params,
-                                        return_type,
-                                    } => (params.clone(), (*return_type.clone()).clone()),
-                                    _ if sym.is_function => {
-                                        (sym.parameters.clone(), sym.ty.clone())
-                                    }
-                                    _ => {
-                                        self.push_error(format!("`{}` is not a function", function));
-                                        return None;
-                                    }
-                                };
+                    _ => match env.get(function) {
+                        Some(sym) => {
+                            let (expected_params, return_type) = match &sym.ty {
+                                Type::Function {
+                                    params,
+                                    return_type,
+                                } => (params.clone(), (*return_type.clone()).clone()),
+                                _ if sym.is_function => (sym.parameters.clone(), sym.ty.clone()),
+                                _ => {
+                                    self.push_error(format!("`{}` is not a function", function));
+                                    return None;
+                                }
+                            };
 
-                                if expected_params.len() != arguments.len() {
-                                    self.push_error(format!(
-                                        "Function `{}` expects {} arguments, got {}",
-                                        function,
-                                        expected_params.len(),
-                                        arguments.len()
-                                    ));
-                                } else {
-                                    for (i, arg) in arguments.iter().enumerate() {
-                                        let arg_ty = self.check_expression(arg, env)?;
-                                        if !self.is_assignable(&expected_params[i], &arg_ty) {
-                                            self.push_error(format!(
-                                                "Argument {} to `{}` expected type {:?}, got {:?}",
-                                                i, function, expected_params[i], arg_ty
-                                            ));
-                                        }
+                            if expected_params.len() != arguments.len() {
+                                self.push_error(format!(
+                                    "Function `{}` expects {} arguments, got {}",
+                                    function,
+                                    expected_params.len(),
+                                    arguments.len()
+                                ));
+                            } else {
+                                for (i, arg) in arguments.iter().enumerate() {
+                                    let arg_ty = self.check_expression(arg, env)?;
+                                    if !self.is_assignable(&expected_params[i], &arg_ty) {
+                                        self.push_error(format!(
+                                            "Argument {} to `{}` expected type {:?}, got {:?}",
+                                            i, function, expected_params[i], arg_ty
+                                        ));
                                     }
                                 }
+                            }
 
-                                Some(return_type)
-                            }
-                            None => {
-                                self.push_error(format!("Undeclared function `{}`", function));
-                                None
-                            }
+                            Some(return_type)
                         }
-                    }
+                        None => {
+                            self.push_error(format!("Undeclared function `{}`", function));
+                            None
+                        }
+                    },
                 }
             }
-            Expression::MethodCall { object, method, arguments } => {
+            Expression::MethodCall {
+                object,
+                method,
+                arguments,
+            } => {
                 let obj_ty = self.check_expression(object, env)?;
                 if let Type::Channel(inner) = &obj_ty {
                     match method.as_str() {
@@ -1002,9 +1114,16 @@ impl TypeChecker {
                 // Struct methods
                 if let Type::Struct(type_name) = &obj_ty {
                     let registry_key = (type_name.clone(), method.clone());
-                    if let Some((param_types, ret_type)) = self.method_registry.get(&registry_key).cloned() {
+                    if let Some((param_types, ret_type)) =
+                        self.method_registry.get(&registry_key).cloned()
+                    {
                         if param_types.len() != arguments.len() {
-                            self.push_error(format!("Method `{}` expects {} arguments, got {}", method, param_types.len(), arguments.len()));
+                            self.push_error(format!(
+                                "Method `{}` expects {} arguments, got {}",
+                                method,
+                                param_types.len(),
+                                arguments.len()
+                            ));
                         }
                         for (i, arg) in arguments.iter().enumerate() {
                             let Some(arg_ty) = self.check_expression(arg, env) else {
@@ -1039,7 +1158,10 @@ impl TypeChecker {
                         self.push_error(format!("Unknown struct type `{}`", type_name));
                     }
                 } else {
-                    self.push_error(format!("Cannot access field on non-struct type {:?}", obj_ty));
+                    self.push_error(format!(
+                        "Cannot access field on non-struct type {:?}",
+                        obj_ty
+                    ));
                 }
                 None
             }
@@ -1087,7 +1209,10 @@ impl TypeChecker {
                 Some(Type::Error)
             }
             Expression::TupleLiteral { elements } => {
-                let types: Vec<Type> = elements.iter().filter_map(|e| self.check_expression(e, env)).collect();
+                let types: Vec<Type> = elements
+                    .iter()
+                    .filter_map(|e| self.check_expression(e, env))
+                    .collect();
                 Some(Type::Tuple(types))
             }
         }
@@ -1140,7 +1265,11 @@ mod tests {
         checker.check_program(&program, &mut env);
 
         assert_eq!(checker.errors.len(), 1);
-        assert!(checker.errors[0].message.contains("Type mismatch: cannot assign `Sar` to variable `age` of type `Kain`"));
+        assert!(
+            checker.errors[0]
+                .message
+                .contains("Type mismatch: cannot assign `Sar` to variable `age` of type `Kain`")
+        );
     }
 
     #[test]
@@ -1163,7 +1292,11 @@ mod tests {
         let mut env = Environment::new();
         checker.check_program(&program, &mut env);
 
-        assert!(checker.errors.is_empty(), "Type checker errors: {:?}", checker.errors);
+        assert!(
+            checker.errors.is_empty(),
+            "Type checker errors: {:?}",
+            checker.errors
+        );
     }
 
     #[test]
@@ -1188,13 +1321,21 @@ mod tests {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
 
         let mut checker = TypeChecker::new();
         let mut env = Environment::new();
         checker.check_program(&program, &mut env);
 
-        assert!(checker.errors.is_empty(), "Type checker errors: {:?}", checker.errors);
+        assert!(
+            checker.errors.is_empty(),
+            "Type checker errors: {:?}",
+            checker.errors
+        );
     }
 
     #[test]
@@ -1210,7 +1351,11 @@ mod tests {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
 
         let mut checker = TypeChecker::new();
         let mut env = Environment::new();
@@ -1238,13 +1383,21 @@ mod tests {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
 
         let mut checker = TypeChecker::new();
         let mut env = Environment::new();
         checker.check_program(&program, &mut env);
 
-        assert!(checker.errors.is_empty(), "Type checker errors: {:?}", checker.errors);
+        assert!(
+            checker.errors.is_empty(),
+            "Type checker errors: {:?}",
+            checker.errors
+        );
     }
 
     #[test]
@@ -1266,13 +1419,21 @@ mod tests {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
 
         let mut checker = TypeChecker::new();
         let mut env = Environment::new();
         checker.check_program(&program, &mut env);
 
-        assert!(checker.errors.is_empty(), "Type checker errors: {:?}", checker.errors);
+        assert!(
+            checker.errors.is_empty(),
+            "Type checker errors: {:?}",
+            checker.errors
+        );
     }
 
     #[test]
@@ -1296,13 +1457,21 @@ mod tests {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
 
         let mut checker = TypeChecker::new();
         let mut env = Environment::new();
         checker.check_program(&program, &mut env);
 
-        assert!(checker.errors.is_empty(), "Type checker errors: {:?}", checker.errors);
+        assert!(
+            checker.errors.is_empty(),
+            "Type checker errors: {:?}",
+            checker.errors
+        );
     }
 
     #[test]
@@ -1319,16 +1488,20 @@ mod tests {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
 
         let mut checker = TypeChecker::new();
         let mut env = Environment::new();
         checker.check_program(&program, &mut env);
 
-        assert!(checker
-            .errors
-            .iter()
-            .any(|e| e.message.contains("can only be used as standalone statements")));
+        assert!(checker.errors.iter().any(|e| {
+            e.message
+                .contains("can only be used as standalone statements")
+        }));
     }
 
     #[test]
@@ -1344,16 +1517,20 @@ mod tests {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
 
         let mut checker = TypeChecker::new();
         let mut env = Environment::new();
         checker.check_program(&program, &mut env);
 
-        assert!(checker
-            .errors
-            .iter()
-            .any(|e| e.message.contains("only allowed inside function/method/closure")));
+        assert!(checker.errors.iter().any(|e| {
+            e.message
+                .contains("only allowed inside function/method/closure")
+        }));
     }
 
     #[test]
@@ -1374,7 +1551,11 @@ mod tests {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
 
         let mut checker = TypeChecker::new();
         let mut env = Environment::new();
@@ -1418,13 +1599,21 @@ mod tests {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
 
         let mut checker = TypeChecker::new();
         let mut env = Environment::new();
         checker.check_program(&program, &mut env);
 
-        assert!(checker.errors.is_empty(), "Type checker errors: {:?}", checker.errors);
+        assert!(
+            checker.errors.is_empty(),
+            "Type checker errors: {:?}",
+            checker.errors
+        );
     }
 
     #[test]
@@ -1462,13 +1651,21 @@ mod tests {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
 
         let mut checker = TypeChecker::new();
         let mut env = Environment::new();
         checker.check_program(&program, &mut env);
 
-        assert!(checker.errors.is_empty(), "Type checker errors: {:?}", checker.errors);
+        assert!(
+            checker.errors.is_empty(),
+            "Type checker errors: {:?}",
+            checker.errors
+        );
     }
 
     #[test]
@@ -1485,18 +1682,18 @@ mod tests {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
 
         let mut checker = TypeChecker::new();
         let mut env = Environment::new();
         checker.check_program(&program, &mut env);
 
         assert!(!checker.errors.is_empty());
-        assert!(
-            checker.errors[0]
-                .message
-                .contains("Unknown import")
-        );
+        assert!(checker.errors[0].message.contains("Unknown import"));
     }
 
     #[test]
@@ -1515,7 +1712,11 @@ mod tests {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
 
         let mut checker = TypeChecker::new();
         let mut env = Environment::new();
@@ -1523,7 +1724,8 @@ mod tests {
 
         assert!(!checker.errors.is_empty());
         assert!(
-            checker.errors
+            checker
+                .errors
                 .iter()
                 .any(|e| e.message.contains("Type mismatch in destructuring"))
         );
@@ -1543,13 +1745,21 @@ mod tests {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
 
         let mut checker = TypeChecker::new();
         let mut env = Environment::new();
         checker.check_program(&program, &mut env);
 
-        assert!(checker.errors.is_empty(), "Type checker errors: {:?}", checker.errors);
+        assert!(
+            checker.errors.is_empty(),
+            "Type checker errors: {:?}",
+            checker.errors
+        );
     }
 
     #[test]
@@ -1578,13 +1788,21 @@ mod tests {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
 
         let mut checker = TypeChecker::new();
         let mut env = Environment::new();
         checker.check_program(&program, &mut env);
 
-        assert!(checker.errors.is_empty(), "Type checker errors: {:?}", checker.errors);
+        assert!(
+            checker.errors.is_empty(),
+            "Type checker errors: {:?}",
+            checker.errors
+        );
     }
 
     #[test]
@@ -1604,7 +1822,11 @@ mod tests {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
 
         let mut checker = TypeChecker::new();
         let mut env = Environment::new();
@@ -1645,7 +1867,11 @@ mod tests {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
 
         let mut checker = TypeChecker::new();
         let mut env = Environment::new();
@@ -1689,13 +1915,21 @@ mod tests {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
 
         let mut checker = TypeChecker::new();
         let mut env = Environment::new();
         checker.check_program(&program, &mut env);
 
-        assert!(checker.errors.is_empty(), "Type checker errors: {:?}", checker.errors);
+        assert!(
+            checker.errors.is_empty(),
+            "Type checker errors: {:?}",
+            checker.errors
+        );
     }
 
     #[test]
@@ -1714,12 +1948,20 @@ mod tests {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program().unwrap();
-        assert!(parser.errors.is_empty(), "Parse errors: {:?}", parser.errors);
+        assert!(
+            parser.errors.is_empty(),
+            "Parse errors: {:?}",
+            parser.errors
+        );
 
         let mut checker = TypeChecker::new();
         let mut env = Environment::new();
         checker.check_program(&program, &mut env);
 
-        assert!(checker.errors.is_empty(), "Type checker errors: {:?}", checker.errors);
+        assert!(
+            checker.errors.is_empty(),
+            "Type checker errors: {:?}",
+            checker.errors
+        );
     }
 }
