@@ -35,8 +35,8 @@ export default function TargetOutlineSlide() {
               desc: "The syntax is implemented through lexer, parser, type checker, and backend code generation rather than simple text substitution.",
             },
             {
-              title: "Go-aligned runtime model",
-              desc: "The primary backend is Go, so networking, packages, concurrency, and defer-style cleanup map cleanly to a real runtime.",
+              title: "Native-first backend model",
+              desc: "The default backend emits LLVM IR for native executables, while Go remains available for packages, networking, and concurrency interop.",
             },
           ].map((item, index) => (
             <Card key={item.title} delay={index}>

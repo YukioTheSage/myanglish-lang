@@ -7,7 +7,8 @@ const testItems = [
   { name: "Parser Tests", desc: "Destructuring, break/continue, for-in index loops, C-style for loops, atote/pay, imports, and assignment variants" },
   { name: "Module Loader Tests", desc: "Relative local import resolution, cycle detection, missing file errors, duplicate package rejection, and export visibility" },
   { name: "Type Checker Tests", desc: "Tuple/error flows, loop control validation, unknown import failures, package visibility, and mismatch diagnostics" },
-  { name: "Go CodeGen Tests", desc: "End-to-end M-Lang → Go including multi-file module flattening, pkg__symbol mangling, structs, stdlib helpers, and control flow" },
+  { name: "LLVM Native Tests", desc: "Phase 1 examples compile through LLVM IR, link native executables, run, and assert output" },
+  { name: "Go Interop CodeGen Tests", desc: "End-to-end M-Lang → Go including multi-file module flattening, pkg__symbol mangling, structs, stdlib helpers, and control flow" },
   { name: "C CodeGen Tests", desc: "Legacy backend coverage, plus clear rejection of local package/module features" },
 ];
 
@@ -16,7 +17,8 @@ const metrics = [
   { component: "Parser", size: "covered" },
   { component: "Type Checker", size: "covered" },
   { component: "Module Loader", size: "covered" },
-  { component: "Go Code Generator", size: "covered" },
+  { component: "LLVM Code Generator", size: "covered" },
+  { component: "Go Interop Generator", size: "covered" },
   { component: "C Code Generator", size: "covered" },
   { component: "Formatter", size: "covered" },
   { component: "LSP Analysis", size: "covered" },
@@ -33,7 +35,7 @@ export default function TestingSlide() {
             animate={{ opacity: 1 }}
             className="bg-bg-code border border-white/10 rounded-xl px-6 py-4 font-mono text-[0.9rem] text-accent-green mb-6"
           >
-            <span className="text-accent-blue mr-2">$</span> cargo test <span className="text-text-muted"># 85 tests passing</span>
+            <span className="text-accent-blue mr-2">$</span> cargo test <span className="text-text-muted"># compiler + native backend suites</span>
           </motion.div>
 
           <h3 className="text-[0.7rem] font-bold uppercase tracking-[0.15em] text-accent-blue mb-4">Test Coverage</h3>

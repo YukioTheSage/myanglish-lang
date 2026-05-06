@@ -3,14 +3,14 @@ import { motion } from "framer-motion";
 import SlideHeader from "../ui/SlideHeader";
 
 const challenges = [
-  { icon: "🔤", title: "Myanmar Unicode in Identifiers", solution: "Lexer recognizes U+1000–U+109F; Go uses them natively; C backend hex-encodes to mlang_ prefix" },
+  { icon: "🔤", title: "Myanmar Unicode in Identifiers", solution: "Lexer recognizes U+1000–U+109F; LLVM backend sanitizes symbols, while Go interop can still use Unicode identifiers directly" },
   { icon: "🔢", title: "Myanmar Numeral Parsing", solution: "Lexer maps ၀–၉ (U+1040–U+1049) to 0–9; allows mixing: kain x = ၂0; → 20" },
   { icon: "⚖️", title: "Expression Precedence", solution: "Pratt precedence climbing algorithm ensures mathematically correct parse order" },
-  { icon: "⚠️", title: "Go's Unused Variable Rule", solution: "CodeGen emits _ = varname after every declaration to satisfy Go compiler" },
-  { icon: "🔗", title: "String Concat Across Backends", solution: "Go: native + operator; C: custom mlang_concat() with heap allocation" },
-  { icon: "🔀", title: "Dual Backend Maintenance", solution: "Shared AST definition; each backend independently walks the same validated tree" },
-  { icon: "🧵", title: "Concurrency Keyword Lowering", solution: "kyoe/laung/naut_sone map 1:1 to Go's go/chan/defer — zero abstraction cost with Myanglish syntax" },
-  { icon: "🌐", title: "HTTP Server Shim Design", solution: "Stdlib shim bridges M-Lang handler signatures to Go net/http; Request/ResponseWriter wrap Go types" },
+  { icon: "⚙️", title: "Native Runtime Linking", solution: "LLVM builds emit .ll, compile object files, compile runtime_llvm.c, and link one native executable" },
+  { icon: "🔗", title: "Runtime Feature Split", solution: "Phase 1 compiles through LLVM; Go interop remains responsible for stdlib, server, and networking features" },
+  { icon: "🔀", title: "Multi-Backend Maintenance", solution: "Shared AST definition; LLVM, Go, and legacy C backends independently walk the same validated tree" },
+  { icon: "🧵", title: "Concurrency Keyword Lowering", solution: "kyoe/laung/naut_sone currently map 1:1 to Go's go/chan/defer on the --target go interop backend" },
+  { icon: "🌐", title: "HTTP Server Shim Design", solution: "Stdlib shim bridges M-Lang handler signatures to Go net/http until native LLVM server runtime parity is implemented" },
 ];
 
 export default function ChallengesSlide() {

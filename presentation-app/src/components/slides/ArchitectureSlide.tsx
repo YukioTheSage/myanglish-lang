@@ -56,7 +56,7 @@ export default function ArchitectureSlide() {
     <div style={{ background: "radial-gradient(ellipse at 50% 30%, rgba(96,165,250,0.06) 0%, transparent 60%)" }}>
       <SlideHeader number="15" title="Compiler Architecture" badge="Core Contribution" />
       <p className="text-text-secondary text-[0.95rem] mb-6 max-w-[700px]">
-        M-Lang follows a classic multi-pass compiler pipeline, transpiling to Go (default) or C
+        M-Lang follows a classic multi-pass compiler pipeline, compiling to LLVM/native executables by default with Go kept as an interop backend
       </p>
       <div className="flex flex-col items-center gap-0 mt-4 px-1">
         <StageBox label=".ml source" colorClass="bg-accent-purple/10 border-accent-purple/30 text-accent-purple" delay={0.1} />
@@ -73,8 +73,21 @@ export default function ArchitectureSlide() {
 
         <div className="flex flex-col sm:flex-row gap-4 sm:gap-8 w-full items-center justify-center">
           <div className="flex flex-col items-center">
-            <StageBox label="CodeGen Go" desc="codegen_go.rs · ~110 KB" colorClass="bg-accent-cyan/[0.08] border-accent-cyan/25 text-accent-cyan" delay={0.65} />
-            <StageLabel text=".go file" delay={0.7} />
+            <StageBox label="CodeGen LLVM" desc="codegen_llvm.rs" colorClass="bg-accent-purple/[0.08] border-accent-purple/25 text-accent-purple" delay={0.65} />
+            <StageLabel text=".ll IR + runtime_llvm.c" delay={0.7} />
+            <Arrow delay={0.75} />
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.8 }}
+              className="w-full max-w-[220px] px-6 sm:px-8 py-3 bg-bg-card border border-white/10 rounded-lg font-mono text-text-secondary text-[0.85rem] sm:min-w-[140px] text-center"
+            >
+              clang / gcc link
+            </motion.div>
+          </div>
+          <div className="flex flex-col items-center">
+            <StageBox label="CodeGen Go" desc="codegen_go.rs · interop" colorClass="bg-accent-cyan/[0.08] border-accent-cyan/25 text-accent-cyan" delay={0.65} />
+            <StageLabel text=".go file for stdlib/server features" delay={0.7} />
             <Arrow delay={0.75} />
             <motion.div
               initial={{ opacity: 0 }}
@@ -83,19 +96,6 @@ export default function ArchitectureSlide() {
               className="w-full max-w-[220px] px-6 sm:px-8 py-3 bg-bg-card border border-white/10 rounded-lg font-mono text-text-secondary text-[0.85rem] sm:min-w-[140px] text-center"
             >
               go build
-            </motion.div>
-          </div>
-          <div className="flex flex-col items-center">
-            <StageBox label="CodeGen C" desc="codegen.rs · ~25 KB" colorClass="bg-accent-orange/[0.08] border-accent-orange/25 text-accent-orange" delay={0.65} />
-            <StageLabel text=".c file" delay={0.7} />
-            <Arrow delay={0.75} />
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.8 }}
-              className="w-full max-w-[220px] px-6 sm:px-8 py-3 bg-bg-card border border-white/10 rounded-lg font-mono text-text-secondary text-[0.85rem] sm:min-w-[140px] text-center"
-            >
-              gcc
             </motion.div>
           </div>
         </div>

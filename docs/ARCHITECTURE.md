@@ -9,12 +9,14 @@ This document describes the current compiler/runtime architecture for `mlang` v0
   -> lexer
   -> parser (AST)
   -> type checker
-  -> codegen_go (default) or codegen (legacy C)
-  -> go build / gcc
+  -> codegen_llvm (default native backend)
+  -> LLVM IR
+  -> object file + runtime_llvm.c
+  -> linker
   -> native executable
 ```
 
-`src/main.rs` handles CLI parsing (`build`, `run`, `fmt`) and orchestrates this flow.
+`src/main.rs` handles CLI parsing (`build`, `run`, `fmt`) and orchestrates this flow. The Go backend remains available through `--target go` for stdlib/server interop features, and the C backend remains available through `--target c` for the older legacy subset.
 
 ## 2. Front-End (Lexer + Parser)
 
@@ -136,7 +138,27 @@ Behavior highlights:
 
 ## 5. Code Generation
 
-### Go Backend (`src/codegen_go.rs`) - Primary
+### LLVM Backend (`src/codegen_llvm.rs`) - Default Native Compiler Path
+
+- Emits LLVM IR and links it with `runtime_llvm.c`.
+- CLI path:
+  - `mlang build file.ml`
+  - `mlang build --target llvm file.ml`
+  - `mlang run file.ml`
+- Native build pipeline:
+  - write `<stem>.ll`
+  - compile IR to `<stem>.o` using `llc` or `clang`
+  - compile `runtime_llvm.c`
+  - link native executable with `gcc`, `clang`, or `cc`
+- Current MVP handles the Phase 1 compiler demo surface:
+  - primitives, arithmetic, comparisons, `if`/`else`
+  - while loops, classic `pat (init; cond; post)` loops, for-in arrays
+  - functions, returns, tuple returns, closures/function values
+  - arrays, map runtime support currently used by Phase 1 examples
+  - simple structs, field access, field assignment, print
+- Phase 2/3/4 Go-backed modules and runtime features are rejected before IR generation with actionable diagnostics telling users to use `--target go`.
+
+### Go Backend (`src/codegen_go.rs`) - Interop / Bootstrap Backend
 
 - Emits idiomatic Go (`package main`, managed imports).
 - Type mapping:
@@ -170,6 +192,8 @@ Behavior highlights:
   - `kainn.tcp_listen/tcp_dial/udp_bind`
   - stdlib struct methods (`http.Request`, `http.ResponseWriter`, TCP/UDP wrappers)
   - helper functions are emitted only when modules are imported.
+
+This backend remains the full-feature target for local modules, stdlib shims, HTTP/server APIs, sockets, database, context, dependency-manager examples, and language-level tests.
 
 ### C Backend (`src/codegen.rs`) - Legacy
 
@@ -211,7 +235,7 @@ main.rs
   -> module_loader.rs
   -> parser.rs -> ast.rs
   -> typecheck.rs -> ast.rs + stdlib.rs
-  -> codegen_go.rs / codegen.rs
+  -> codegen_llvm.rs / codegen_go.rs / codegen.rs
   -> formatter.rs (fmt command)
 
 lsp/main.rs
@@ -223,4 +247,4 @@ lsp/main.rs
 
 ## 9. Validation
 
-`cargo test` currently covers lexer, parser, type checker, formatter, Go codegen, C codegen, and stdlib usage paths.
+`cargo test` currently covers lexer, parser, type checker, formatter, LLVM codegen, LLVM native e2e execution for Phase 1 examples, Go codegen, C codegen, and stdlib usage paths.

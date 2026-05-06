@@ -1,6 +1,6 @@
 # M-Lang (mlang)
 
-M-Lang is a statically typed language using Myanglish keywords. The compiler is written in Rust and targets Go by default (`--target go`), with a legacy C backend (`--target c`).
+M-Lang is a statically typed language using Myanglish keywords. The compiler is written in Rust and now targets LLVM/native executables by default (`--target llvm`). A Go interop backend (`--target go`) remains available for the full stdlib/server runtime, and the C backend (`--target c`) is retained as a frozen legacy path.
 
 Current crate version: `0.1.0`.
 
@@ -17,7 +17,7 @@ Current crate version: `0.1.0`.
   - Functions: `htae(arr, item)`, `ashay(value)`.
   - Methods: `arr.push(x)`, `arr.remove(i)`, `arr.len()`, `text.khwae(sep)`, `text.swal(sub)`, `text.ashay()`.
   - Type conversion helpers: `pyaung_kain(...)`, `pyaung_sar(...)`, `pyaung_da_tha(...)`.
-- Go stdlib module shims: `"kainn/http"`, `"json"`, `"file"`, `"su_nit"`, `"pone_set"`, `"in_ote"`, `"hmat"`.
+- Go interop stdlib module shims: `"kainn/http"`, `"json"`, `"file"`, `"su_nit"`, `"pone_set"`, `"in_ote"`, `"hmat"`.
 - CLI formatter (`mlang fmt`) and LSP server (`mlang-lsp`).
 
 ## Quick Start
@@ -25,8 +25,10 @@ Current crate version: `0.1.0`.
 ### Requirements
 
 - Rust toolchain (edition 2024 crate)
-- Go (for default backend)
-- GCC (only if using `--target c`)
+- LLVM tools: `clang` or `llc` for native LLVM builds
+- C compiler/linker: `gcc`, `clang`, or `cc` for linking the LLVM runtime
+- Go (only for `--target go` stdlib/server examples)
+- GCC (only if using the legacy `--target c` path)
 
 ### Build + Run
 
@@ -40,9 +42,12 @@ cargo run -- run hello.ml
 
 ```text
 mlang build <file.ml>
+mlang build --target llvm <file.ml>
 mlang build --target go <file.ml>
 mlang build --target c <file.ml>
 mlang run <file.ml>
+mlang run --target llvm <file.ml>
+mlang run --target go <file.ml>
 mlang run --target c <file.ml>
 mlang fmt <file.ml>
 mlang fmt --check <file.ml>
@@ -130,7 +135,7 @@ yu "json";
 yu json;
 ```
 
-Available stdlib modules (Go backend):
+Available stdlib modules (Go interop backend):
 
 - `"kainn/http"` as `http`
 - `"json"`
@@ -142,14 +147,15 @@ Available stdlib modules (Go backend):
 
 ## Backend Status
 
-| Area | Go backend (`--target go`) | C backend (`--target c`) |
-| --- | --- | --- |
-| Core language (phase-1/2 syntax) | Supported | Partial |
-| Struct/method/interface/closure/tuple/error features | Supported | Not fully supported |
-| Stdlib modules (`http/json/file/su_nit/pone_set/in_ote/hmat`) | Supported | Rejected with error |
-| HashMap behavior | Native Go map support | Placeholder runtime only |
+| Area | LLVM backend (`--target llvm`, default) | Go backend (`--target go`) | C backend (`--target c`) |
+| --- | --- | --- | --- |
+| Compiler identity | Native compiler path: `.ml -> LLVM IR -> object -> executable` | Bootstrap/interop backend | Frozen legacy path |
+| Phase 1 language examples | Supported and covered by native e2e tests | Supported | Partial |
+| Struct/closure/tuple/error features | MVP support for core demos | Supported | Not fully supported |
+| Stdlib/server modules (`http/json/file/su_nit/pone_set/in_ote/hmat`) | Go-only for now, rejected with actionable diagnostics | Supported | Rejected with error |
+| Concurrency/networking/database/test DSL | Go-only for now | Supported | Rejected with error |
 
-The C backend is intentionally legacy and does not implement the full modern surface.
+The LLVM backend is the professor-facing native compiler path. The Go backend remains the practical interop target for Phase 2/3/4 stdlib and server features while LLVM parity grows.
 
 ## Tooling
 
@@ -159,7 +165,7 @@ The C backend is intentionally legacy and does not implement the full modern sur
 cargo test
 ```
 
-Current suite covers lexer, parser, typechecker, formatter, Go codegen, and legacy C codegen.
+Current suite covers lexer, parser, typechecker, formatter, LLVM codegen/e2e native execution, Go codegen, and legacy C codegen.
 
 ### LSP
 
@@ -180,7 +186,9 @@ mlang/
     lexer.rs         # tokenizer
     parser.rs        # recursive descent + Pratt parser
     typecheck.rs     # semantic checks and type rules
-    codegen_go.rs    # primary backend
+    codegen_llvm.rs  # default native LLVM backend
+    runtime_llvm.c   # small native runtime linked by LLVM builds
+    codegen_go.rs    # Go interop backend for stdlib/server features
     codegen.rs       # legacy C backend
     formatter.rs     # source formatter
     stdlib.rs        # stdlib module signatures
@@ -193,7 +201,8 @@ mlang/
 
 ## Known Gaps
 
-- C backend support lags behind Go backend capabilities.
+- LLVM backend is the default compiler path, but Phase 2/3/4 stdlib, networking, database, dependency, and test-runner features are still Go-only.
+- C backend support lags behind Go backend capabilities and is frozen as legacy.
 - Interface conformance checks are currently minimal (declaration-oriented).
 - Unknown imports are treated as plain identifiers until used; only built-in stdlib modules are pre-registered.
 

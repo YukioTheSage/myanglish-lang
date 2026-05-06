@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import SlideHeader from "../ui/SlideHeader";
 
 const languages = [
-  { name: "M-Lang 🇲🇲", keywords: "Myanglish", target: "Native (Go/C)", typing: "Static", typingColor: "green", tooling: "LSP, Formatter, VS Code", highlight: true },
+  { name: "M-Lang 🇲🇲", keywords: "Myanglish", target: "Native (LLVM)", typing: "Static", typingColor: "green", tooling: "LSP, Formatter, VS Code", highlight: true },
   { name: "Qalb (قلب)", keywords: "Arabic", target: "Interpreter", typing: "Dynamic", typingColor: "yellow", tooling: "Minimal" },
   { name: "Wenyan (文言)", keywords: "Classical Chinese", target: "JavaScript", typing: "Dynamic", typingColor: "yellow", tooling: "Online IDE" },
   { name: "Rapira", keywords: "Russian", target: "Interpreter", typing: "Dynamic", typingColor: "yellow", tooling: "Minimal" },
@@ -12,9 +12,9 @@ const languages = [
 
 const diffs = [
   { icon: "🏗️", text: "<strong>Static type system</strong> — Most non-English languages are dynamically typed" },
-  { icon: "⚡", text: "<strong>Native code compilation</strong> — Via Go/C backends, not interpreted" },
+  { icon: "⚡", text: "<strong>Native code compilation</strong> — Via LLVM IR, object files, and linker output" },
   { icon: "🛠️", text: "<strong>Full developer tooling</strong> — LSP, formatter, VS Code extension" },
-  { icon: "🔀", text: "<strong>Dual compilation backends</strong> — Shared AST with Go and C targets" },
+  { icon: "🔀", text: "<strong>Multiple backends</strong> — LLVM for native demos, Go for interop/server features" },
   { icon: "🧵", text: "<strong>Built-in concurrency</strong> — Goroutines, channels, and defer with Myanglish keywords" },
 ];
 

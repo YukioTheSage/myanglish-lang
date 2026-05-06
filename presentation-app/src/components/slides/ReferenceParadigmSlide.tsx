@@ -23,9 +23,9 @@ const concepts = [
 ];
 
 const whyReference = [
-  "Go is the best practical reference language for this project because M-Lang transpiles to Go by default.",
+  "Go remains the best language-design reference for packages, explicit errors, and concurrency, while LLVM is now the default compiler output path.",
   "M-Lang borrows the ideas of explicit typing, multiple return values, error-oriented flows, package organization, and concurrency semantics from Go.",
-  "Using Go as the reference language keeps the academic review connected to the real implementation choices in this repository.",
+  "Using Go as the semantic reference and LLVM as the native backend keeps the review connected to both language design and compiler construction.",
 ];
 
 export default function ReferenceParadigmSlide() {

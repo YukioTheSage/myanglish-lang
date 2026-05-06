@@ -5,7 +5,7 @@ import SlideHeader from "../ui/SlideHeader";
 const items = [
   { num: 1, title: "Language Design", desc: "A complete statically-typed language with Myanglish keywords and Myanmar numeral support" },
   { num: 2, title: "Multi-Pass Compiler", desc: "Full pipeline (Lexer → Parser → Type Checker → Module Loader → Code Gen) implemented in Rust" },
-  { num: 3, title: "Dual Backends", desc: "Go (modern, default) and C (legacy) transpilation from a shared AST, with module features on Go target" },
+  { num: 3, title: "Native Backend", desc: "LLVM is the default compiler path, with Go retained for stdlib/server interop and C frozen as legacy" },
   { num: 4, title: "Tooling Ecosystem", desc: "Formatter, LSP server, and VS Code extension with format-on-save workflow" },
   { num: 5, title: "Server-Side Runtime", desc: "Goroutines (kyoe), channels (laung), defer (naut_sone), HTTP server, and TCP/UDP sockets — all production-ready" },
 ];

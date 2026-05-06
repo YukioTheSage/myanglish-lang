@@ -2,11 +2,11 @@
 import { motion } from "framer-motion";
 
 const qas = [
-  { q: "Why transpile to Go instead of compiling directly?", a: "Leverage Go's runtime (GC, goroutines, maps, Unicode) — faster development cycle with zero runtime overhead" },
+  { q: "Does M-Lang compile directly now?", a: "Yes. The default target emits LLVM IR, compiles it to an object file, links runtime_llvm.c, and produces a native executable" },
   { q: "Why Rust for the compiler?", a: "Memory safety, pattern matching, strong type system, and excellent ecosystem for compiler construction" },
   { q: "How does this compare to just using Go directly?", a: "M-Lang is an educational & cultural tool — it lowers the language barrier to programming for Burmese speakers" },
-  { q: "What about performance from transpilation?", a: "Zero runtime overhead — generated Go/C code compiles to the same native machine code as hand-written code" },
-  { q: "How does concurrency work in M-Lang?", a: "kyoe maps to Go goroutines, laung<T> to typed channels, and naut_sone to defer — all 1:1 with zero abstraction cost" },
+  { q: "Why keep the Go backend?", a: "Go remains the interop backend for the full stdlib, HTTP server, sockets, database, and concurrency runtime while LLVM parity grows" },
+  { q: "How does concurrency work in M-Lang?", a: "Today kyoe maps to Go goroutines, laung<T> to typed channels, and naut_sone to defer on --target go" },
 ];
 
 export default function QASlide() {

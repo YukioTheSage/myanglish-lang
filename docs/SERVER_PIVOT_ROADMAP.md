@@ -2,7 +2,7 @@
 
 ## Goal
 
-This roadmap tracks what M-Lang already supports and what is still required to become a practical server-side language in the Go ecosystem style.
+This roadmap tracks what M-Lang already supports, what remains Go-backed for server-side work, and the current migration from Go-target-first positioning to a native LLVM compiler path.
 
 Date baseline: **March 2026**.
 
@@ -21,7 +21,7 @@ Date baseline: **March 2026**.
 | Slices + array/string helpers | Done | `arr[low:high]`, `htae`, `ashay`, `khwae/swal/ayaik` |
 | Package declaration + explicit export | Done | `atote`, `pay` |
 
-### Modules and Stdlib (Go backend)
+### Modules and Stdlib (Go Interop Backend)
 
 | Capability | Status | Notes |
 | --- | --- | --- |
@@ -37,7 +37,8 @@ Date baseline: **March 2026**.
 
 | Capability | Status | Notes |
 | --- | --- | --- |
-| Go backend | Done | Default target (`--target go`) |
+| LLVM backend | MVP | Default native compiler target (`--target llvm`) for Phase 1 examples |
+| Go backend | Done | Interop/bootstrap target (`--target go`) for stdlib/server features |
 | C backend | Legacy | Limited surface, no local modules/stdlib shims |
 | LSP + VS Code extension | Done | Semantic + diagnostics support |
 | Formatter (`mlang fmt`) | Done | Formats modern syntax and imports |
@@ -91,7 +92,7 @@ loke main() -> kain {
 ### Tier 2 - Production Readiness
 
 1. **Extended stdlib modules** - Done  
-   `pone_set` (fmt), `in_ote` (io), `hmat` (log) are implemented in the Go backend stdlib shim.
+   `pone_set` (fmt), `in_ote` (io), `hmat` (log) are implemented in the Go interop stdlib shim.
 
 2. **Language-level test framework** (`set_sae`) - Done  
    `mlang test <file.ml>` executes language-level tests with pass/fail reporting and non-zero exit on failure.
@@ -100,7 +101,7 @@ loke main() -> kain {
    `baung ctx = baung(timeout_ms);` and `ctx.close()` are implemented with Go `context.WithTimeout`.
 
 4. **Database abstraction** (`database`) - Done  
-   Postgres-first `database.open/conn.exec/query_one/query_all/close` APIs are available on Go backend.
+   Postgres-first `database.open/conn.exec/query_one/query_all/close` APIs are available on the Go backend.
 
 5. **Dependency manager command** (`mlang get`) - Done  
    Git ref pinning to commit SHA with deterministic `mlang.lock` and `.mlang/deps/<commit>/` cache.
@@ -118,6 +119,7 @@ loke main() -> kain {
 | Phase 2: Modules + Stdlib Baseline | `atote/pay`, local import graph, `json/file/su_nit/pone_set/in_ote/hmat`, HTTP client baseline | **Completed** |
 | Phase 3: Networking + Concurrency Runtime | sockets, server-side HTTP runtime, `kyoe`, `laung`, `naut_sone` | **Completed** |
 | Phase 4: Production Readiness | testing DSL, context, database, dependency manager, cross-compilation | **Completed** |
+| Phase 5: Native Compiler Migration | LLVM default target, native runtime linking, Phase 1 native e2e coverage | **MVP In Progress** |
 
 ### Detailed Backlog by Phase
 
@@ -151,13 +153,13 @@ No remaining items in Phase 2 baseline scope.
 
 ## Compiler Backend Decision
 
-> **Resolved (February 2026):** Go backend is the default transpilation target. C backend remains available via `--target c` as a legacy path.
+> **Updated (May 2026):** LLVM is the default native compiler target. Go remains available via `--target go` as the interop/backend path for modules, stdlib, and server features. C remains available via `--target c` as a legacy path.
 
 | Backend | Status | Pros | Tradeoffs |
 | --- | --- | --- | --- |
-| Go (default) | Implemented | Mature runtime, strong stdlib interop, Unicode-friendly identifiers | Requires Go toolchain |
+| LLVM IR (default) | MVP implemented | Professor-facing native compiler path, object-code/linker pipeline, Phase 1 e2e coverage | Phase 2/3/4 stdlib/server parity still pending |
+| Go (interop) | Implemented | Mature runtime, strong stdlib interop, Unicode-friendly identifiers | Source-to-Go bootstrap target, requires Go toolchain |
 | C (legacy) | Implemented (limited) | Portable and simple for older subset | No local module graph support, no Go stdlib shim support |
-| LLVM IR | Future | Potential native optimization path | Large implementation effort |
 
 ---
 
@@ -180,12 +182,13 @@ loke main() -> kain {
 }
 ```
 
-This server-side target syntax is now available on the Go backend.
+This server-side target syntax is available on the Go interop backend. The LLVM backend intentionally rejects these Go-backed server/runtime features until native runtime parity is added.
 
 ---
 
 ## Next High-Value Items
 
-1. Package registry and semver-aware dependency resolution (beyond git+lockfile v1)
-2. Broader database adapters and typed row mapping beyond `twe<sar, sar>`
-3. Optional C-backend deprecation plan or explicit frozen-scope documentation
+1. Expand LLVM backend parity beyond Phase 1 examples while keeping clear Go-only diagnostics
+2. Add a small M-Lang IR or typed-AST lowering layer before LLVM if the backend grows complex
+3. Package registry and semver-aware dependency resolution (beyond git+lockfile v1)
+4. Broader database adapters and typed row mapping beyond `twe<sar, sar>`

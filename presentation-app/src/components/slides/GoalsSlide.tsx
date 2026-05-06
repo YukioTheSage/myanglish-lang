@@ -5,10 +5,10 @@ import SlideHeader from "../ui/SlideHeader";
 const goals = [
   { num: "01", title: "Myanglish Language", desc: "Design a statically-typed language with romanized Burmese keywords (kain, sar, loke, pya)" },
   { num: "02", title: "Multi-Pass Compiler", desc: "Build a full pipeline in Rust: Lexer → Parser → Type Checker → Code Generator" },
-  { num: "03", title: "Dual Backends", desc: "Transpile to Go (default) and C (legacy), then compile to native executables" },
+  { num: "03", title: "Native Compiler Backend", desc: "Compile to LLVM IR by default, then produce object code and native executables" },
   { num: "04", title: "Developer Tooling", desc: "Code formatter (mlang fmt), LSP server, and VS Code extension with syntax highlighting" },
   { num: "05", title: "Myanmar Numerals", desc: "Support Myanmar digits ၀–၉ (U+1040–U+1049) alongside ASCII 0–9, freely mixable" },
-  { num: "06", title: "Server-Side Runtime", desc: "Goroutines, channels, defer, HTTP server, and TCP/UDP sockets — all implemented on the Go backend" },
+  { num: "06", title: "Go Interop Runtime", desc: "Goroutines, channels, defer, HTTP server, and TCP/UDP sockets remain available on --target go" },
 ];
 
 export default function GoalsSlide() {

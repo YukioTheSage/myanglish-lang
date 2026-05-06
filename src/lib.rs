@@ -1,8 +1,11 @@
 pub mod ast;
 pub mod codegen;
 pub mod codegen_go;
+pub mod codegen_llvm;
 pub mod formatter;
 pub mod lexer;
+#[cfg(feature = "llvm-backend")]
+pub mod llvm_types;
 pub mod module_loader;
 pub mod parser;
 pub mod stdlib;

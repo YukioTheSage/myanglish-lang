@@ -51,7 +51,7 @@ export default function TitleSlide() {
       />
 
       <motion.p variants={fadeUp} className="text-[0.95rem] sm:text-lg text-text-muted mb-8 relative">
-        Transpiling <strong className="text-text-primary">Myanglish</strong> to Native Code via Go &amp; C Backends
+        Compiling <strong className="text-text-primary">Myanglish</strong> to Native Executables via an LLVM Backend
       </motion.p>
 
       <motion.div variants={fadeUp} className="flex flex-col sm:flex-row items-center gap-3 sm:gap-8 mb-8 relative">
@@ -68,8 +68,8 @@ export default function TitleSlide() {
       <motion.div variants={fadeUp} className="flex flex-wrap justify-center gap-2.5 sm:gap-3 relative">
         {[
           { name: "Rust", color: "#fb923c" },
-          { name: "Go", color: "#22d3ee" },
-          { name: "C", color: "#60a5fa" },
+          { name: "LLVM", color: "#a78bfa" },
+          { name: "Go Interop", color: "#22d3ee" },
           { name: "VS Code", color: "#a78bfa" },
         ].map((tag) => (
           <span
